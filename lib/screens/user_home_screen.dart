@@ -10,6 +10,7 @@ import '../providers/app_theme_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/local_notification_service.dart';
 import '../services/user_home_service.dart';
+import 'auction_chat_threads_screen.dart';
 import 'auction_detail_screen.dart';
 import 'create_auction_screen.dart';
 import 'live_auction_screen.dart';
@@ -914,6 +915,31 @@ class _OwnerAuctionTile extends StatelessWidget {
                   );
                 },
                 icon: const Icon(Icons.play_circle_outline_rounded),
+              ),
+            if (item.collection == 'auctions')
+              IconButton(
+                tooltip: 'Bidder chats',
+                onPressed: () {
+                  final authProvider = context.read<AuthProvider>();
+                  final currentUserId = authProvider.firebaseUser?.uid;
+                  final currentUserName =
+                      authProvider.userProfile?.fullName ?? 'Seller';
+                  if (currentUserId == null) {
+                    return;
+                  }
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AuctionChatThreadsScreen(
+                        auctionId: auction.id,
+                        auctionTitle: '${auction.title} chats',
+                        currentUserId: currentUserId,
+                        currentUserName: currentUserName,
+                        service: service,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
               ),
             IconButton(
               tooltip: 'Edit',

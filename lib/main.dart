@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/theme/app_theme.dart';
 import 'firebase_options.dart';
 import 'providers/app_theme_provider.dart';
 import 'providers/auth_provider.dart';
@@ -44,31 +45,6 @@ class FairBidApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseTheme = ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF4F8DFF),
-        brightness: Brightness.light,
-      ),
-      scaffoldBackgroundColor: const Color(0xFFF7F9FC),
-      visualDensity: VisualDensity.adaptivePlatformDensity,
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.white,
-        foregroundColor: Color(0xFF111827),
-        elevation: 0,
-        centerTitle: false,
-      ),
-    );
-    final darkTheme = ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF14B8A6),
-        brightness: Brightness.dark,
-      ),
-      scaffoldBackgroundColor: const Color(0xFF07111F),
-      visualDensity: VisualDensity.adaptivePlatformDensity,
-    );
-
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppThemeProvider()),
@@ -81,20 +57,8 @@ class FairBidApp extends StatelessWidget {
           return MaterialApp(
             title: 'FairBid',
             themeMode: themeProvider.themeMode,
-            theme: baseTheme.copyWith(
-              cardTheme: baseTheme.cardTheme.copyWith(
-                color: Colors.white,
-                elevation: 0,
-                surfaceTintColor: Colors.transparent,
-              ),
-            ),
-            darkTheme: darkTheme.copyWith(
-              cardTheme: darkTheme.cardTheme.copyWith(
-                color: const Color(0xFF111827),
-                elevation: 0,
-                surfaceTintColor: Colors.transparent,
-              ),
-            ),
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
             home: firebaseInitializationError == null
                 ? const SplashScreen()
                 : FirebaseSetupScreen(

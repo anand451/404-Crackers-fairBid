@@ -9,6 +9,7 @@ import '../models/bid.dart';
 import '../models/payment_record.dart';
 import '../models/user_model.dart';
 import 'notification_service.dart';
+import 'server_clock_service.dart';
 
 class AuctionService {
   AuctionService({
@@ -32,8 +33,12 @@ class AuctionService {
         .where('status', isEqualTo: 'approved')
         .snapshots()
         .map((snapshot) {
-      final auctions = snapshot.docs
-          .map((doc) => Auction.fromMap(doc.id, doc.data()))
+      final deduped = <String, Auction>{};
+      for (final doc in snapshot.docs) {
+        final auction = Auction.fromMap(doc.id, doc.data());
+        deduped[auction.id] = auction;
+      }
+      final auctions = deduped.values
           .where((auction) => auction.isVisibleInMarketplace)
           .toList()
         ..sort(_marketplaceSort);
@@ -234,7 +239,7 @@ class AuctionService {
     final remainingSeconds = auction.remainingSeconds <= 0
         ? auction.durationHours * 3600
         : auction.remainingSeconds;
-    final now = DateTime.now();
+    final now = ServerClockService.instance.now();
 
     await _auctions.doc(auction.id).set({
       'state': 'LIVE',
@@ -267,7 +272,7 @@ class AuctionService {
     }
 
     final remainingSeconds = auction.endTime
-        .difference(DateTime.now())
+        .difference(ServerClockService.instance.now())
         .inSeconds
         .clamp(0, 1 << 31)
         .toInt();
@@ -285,6 +290,22 @@ class AuctionService {
   }) async {
     if (auction.sellerId != sellerId) {
       throw 'Only the seller can end this auction.';
+    }
+
+    await _auctions.doc(auction.id).set({
+      'state': 'ENDED',
+      'remainingSeconds': 0,
+      'endedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> syncAuctionLifecycle(Auction auction) async {
+    if (auction.state != 'LIVE' || auction.isSold || auction.isEnded) {
+      return;
+    }
+    if (auction.endTime.isAfter(ServerClockService.instance.now())) {
+      return;
     }
 
     await _auctions.doc(auction.id).set({

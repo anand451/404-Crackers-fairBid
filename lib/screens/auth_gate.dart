@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/widgets/app_state_widgets.dart';
 import '../providers/auth_provider.dart';
 import 'admin_home_screen.dart';
 import 'auth_screen.dart';
@@ -16,7 +17,8 @@ class AuthGate extends StatelessWidget {
       builder: (context, authProvider, child) {
         if (authProvider.isInitializing) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            body: AppLoadingIndicator(
+                label: 'Preparing your FairBid workspace...'),
           );
         }
 

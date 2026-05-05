@@ -13,6 +13,7 @@ import '../models/bid.dart';
 import '../models/payment_record.dart';
 import '../providers/auth_provider.dart';
 import '../services/auction_service.dart';
+import '../services/server_clock_service.dart';
 
 class LiveAuctionScreen extends StatefulWidget {
   const LiveAuctionScreen({
@@ -39,12 +40,14 @@ class _LiveAuctionScreenState extends State<LiveAuctionScreen> {
   @override
   void initState() {
     super.initState();
+    _now = ServerClockService.instance.now();
+    unawaited(ServerClockService.instance.ensureSynced(force: true));
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) {
         return;
       }
       setState(() {
-        _now = DateTime.now();
+        _now = ServerClockService.instance.now();
       });
     });
 
@@ -240,6 +243,9 @@ class _LiveAuctionScreenState extends State<LiveAuctionScreen> {
           final isWinner =
               currentUserId != null && currentUserId == auction.winnerId;
           final effectiveState = _effectiveState(auction);
+          if (auction.state == 'LIVE' && effectiveState == 'ENDED') {
+            unawaited(_auctionService.syncAuctionLifecycle(auction));
+          }
           final canBid = auction.status == 'approved' &&
               effectiveState == 'LIVE' &&
               !isSeller &&

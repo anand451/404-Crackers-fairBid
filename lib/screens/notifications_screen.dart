@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../core/widgets/app_state_widgets.dart';
 import '../models/app_notification.dart';
 import '../services/notification_service.dart';
 
@@ -47,6 +48,7 @@ class NotificationCenterSheet extends StatelessWidget {
     final stream = adminInbox
         ? _notificationService.streamAdminNotifications()
         : _notificationService.streamUserNotifications(receiverId ?? '');
+    final hasTarget = adminInbox || (receiverId?.isNotEmpty ?? false);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
@@ -64,10 +66,21 @@ class NotificationCenterSheet extends StatelessWidget {
                 ),
               ),
               TextButton(
-                onPressed: () => adminInbox
-                    ? _notificationService.markAllAdminNotificationsAsRead()
-                    : _notificationService
-                        .markAllUserNotificationsAsRead(receiverId ?? ''),
+                onPressed: hasTarget
+                    ? () => adminInbox
+                        ? _notificationService.deleteAllAdminNotifications()
+                        : _notificationService
+                            .deleteAllUserNotifications(receiverId ?? '')
+                    : null,
+                child: const Text('Clear all'),
+              ),
+              TextButton(
+                onPressed: hasTarget
+                    ? () => adminInbox
+                        ? _notificationService.markAllAdminNotificationsAsRead()
+                        : _notificationService
+                            .markAllUserNotificationsAsRead(receiverId ?? '')
+                    : null,
                 child: const Text('Mark all read'),
               ),
             ],
@@ -78,18 +91,20 @@ class NotificationCenterSheet extends StatelessWidget {
               stream: stream,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
-                  return const _NotificationEmptyState(
+                  return const AppMessageState(
                     icon: Icons.cloud_off_rounded,
                     message: 'Unable to load notifications right now.',
                   );
                 }
                 if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const AppLoadingIndicator(
+                    label: 'Loading notifications...',
+                  );
                 }
 
                 final notifications = snapshot.data!;
                 if (notifications.isEmpty) {
-                  return const _NotificationEmptyState(
+                  return const AppMessageState(
                     icon: Icons.notifications_none_rounded,
                     message: 'You are all caught up.',
                   );
@@ -108,6 +123,11 @@ class NotificationCenterSheet extends StatelessWidget {
                           await _notificationService.markAsRead(item.id);
                         }
                       },
+                      onDelete: () =>
+                          _notificationService.deleteNotification(item.id),
+                      onMarkRead: item.readStatus
+                          ? null
+                          : () => _notificationService.markAsRead(item.id),
                     );
                   },
                 );
@@ -124,84 +144,132 @@ class _NotificationTile extends StatelessWidget {
   const _NotificationTile({
     required this.notification,
     required this.onTap,
+    required this.onDelete,
+    this.onMarkRead,
   });
 
   final AppNotification notification;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
+  final VoidCallback? onMarkRead;
 
   @override
   Widget build(BuildContext context) {
     final accent = switch (notification.type) {
       'complaint' => const Color(0xFFFB7185),
       'auction' => const Color(0xFF14B8A6),
+      'payment' => const Color(0xFF6366F1),
       _ => const Color(0xFFFFC107),
     };
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        color: notification.readStatus
-            ? Theme.of(context).colorScheme.surface
-            : accent.withValues(alpha: 0.10),
-        border: Border.all(
-          color: notification.readStatus
-              ? Theme.of(context)
-                  .colorScheme
-                  .outlineVariant
-                  .withValues(alpha: 0.4)
-              : accent.withValues(alpha: 0.35),
+    return Dismissible(
+      key: ValueKey(notification.id),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) => onDelete(),
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          color: const Color(0xFFEF4444),
         ),
+        child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
       ),
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.all(18),
-        leading: CircleAvatar(
-          backgroundColor: accent.withValues(alpha: 0.18),
-          child: Icon(_iconFor(notification.type), color: accent),
-        ),
-        title: Text(
-          notification.title,
-          style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(notification.message),
-              const SizedBox(height: 8),
-              Text(
-                DateFormat('dd MMM, hh:mm a').format(notification.timestamp),
-                style: GoogleFonts.manrope(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.56),
-                ),
-              ),
-            ],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          color: notification.readStatus
+              ? Theme.of(context).colorScheme.surface
+              : accent.withValues(alpha: 0.10),
+          border: Border.all(
+            color: notification.readStatus
+                ? Theme.of(context)
+                    .colorScheme
+                    .outlineVariant
+                    .withValues(alpha: 0.4)
+                : accent.withValues(alpha: 0.35),
           ),
         ),
-        trailing: notification.readStatus
-            ? null
-            : Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: accent,
-                  boxShadow: [
-                    BoxShadow(
-                      color: accent.withValues(alpha: 0.4),
-                      blurRadius: 12,
-                      spreadRadius: 1,
+        child: ListTile(
+          onTap: onTap,
+          contentPadding: const EdgeInsets.all(18),
+          leading: CircleAvatar(
+            backgroundColor: accent.withValues(alpha: 0.18),
+            child: Icon(_iconFor(notification.type), color: accent),
+          ),
+          title: Text(
+            notification.title,
+            style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(notification.message),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    _TypePill(type: notification.type, color: accent),
+                    Text(
+                      DateFormat('dd MMM, hh:mm a')
+                          .format(notification.timestamp),
+                      style: GoogleFonts.manrope(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.56),
+                      ),
                     ),
                   ],
                 ),
+              ],
+            ),
+          ),
+          trailing: PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'read':
+                  onMarkRead?.call();
+                case 'delete':
+                  onDelete();
+              }
+            },
+            itemBuilder: (context) => [
+              if (!notification.readStatus)
+                const PopupMenuItem<String>(
+                  value: 'read',
+                  child: Text('Mark as read'),
+                ),
+              const PopupMenuItem<String>(
+                value: 'delete',
+                child: Text('Delete'),
               ),
+            ],
+            icon: notification.readStatus
+                ? const Icon(Icons.more_horiz_rounded)
+                : Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: accent,
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.4),
+                          blurRadius: 12,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }
@@ -210,36 +278,42 @@ class _NotificationTile extends StatelessWidget {
     return switch (type) {
       'complaint' => Icons.support_agent_rounded,
       'auction' => Icons.notifications_active_outlined,
+      'payment' => Icons.payments_outlined,
       _ => Icons.campaign_rounded,
     };
   }
 }
 
-class _NotificationEmptyState extends StatelessWidget {
-  const _NotificationEmptyState({
-    required this.icon,
-    required this.message,
+class _TypePill extends StatelessWidget {
+  const _TypePill({
+    required this.type,
+    required this.color,
   });
 
-  final IconData icon;
-  final String message;
+  final String type;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 42, color: const Color(0xFF0F766E)),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
-            ),
-          ],
+    final label = switch (type) {
+      'complaint' => 'Complaint reply',
+      'auction' => 'Auction alert',
+      'payment' => 'Payment update',
+      _ => 'Admin message',
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.manrope(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );

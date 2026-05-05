@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/complaint.dart';
 import '../models/user_model.dart';
@@ -52,24 +53,30 @@ class ComplaintService {
       timestamp: DateTime.now(),
     );
 
-    final batch = _firestore.batch();
-    batch.set(document, {
-      ...complaint.toMap(),
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-    final notificationDoc = _firestore.collection('notifications').doc();
-    batch.set(notificationDoc, {
-      'receiverId': '',
-      'receiverRole': 'admin',
-      'senderId': user.uid,
-      'title': 'New complaint received',
-      'message': '${user.fullName} submitted a complaint.',
-      'type': 'complaint',
-      'complaintId': complaint.id,
-      'timestamp': FieldValue.serverTimestamp(),
-      'readStatus': false,
-    });
-    await batch.commit();
+    try {
+      final batch = _firestore.batch();
+      batch.set(document, {
+        ...complaint.toMap(),
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      final notificationDoc = _firestore.collection('notifications').doc();
+      batch.set(notificationDoc, {
+        'receiverId': '',
+        'receiverRole': 'admin',
+        'senderId': user.uid,
+        'title': 'New complaint received',
+        'message': '${user.fullName} submitted a complaint.',
+        'type': 'complaint',
+        'complaintId': complaint.id,
+        'timestamp': FieldValue.serverTimestamp(),
+        'readStatus': false,
+      });
+      await batch.commit();
+      _log('Complaint ${complaint.id} saved for ${user.uid}');
+    } on FirebaseException catch (error) {
+      _log('Complaint submit failed [${error.code}] ${error.message}');
+      rethrow;
+    }
   }
 
   Future<void> replyToComplaint({
@@ -82,27 +89,33 @@ class ComplaintService {
       throw 'Reply cannot be empty.';
     }
 
-    final batch = _firestore.batch();
-    batch.set(
-        _firestore.collection('complaints').doc(complaint.id),
-        {
-          'adminReply': trimmed,
-          'status': 'resolved',
-          'adminId': adminId,
-          'resolvedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true));
-    batch.set(_firestore.collection('notifications').doc(), {
-      'receiverId': complaint.userId,
-      'senderId': adminId,
-      'title': 'Complaint updated',
-      'message': trimmed,
-      'type': 'complaint',
-      'complaintId': complaint.id,
-      'timestamp': FieldValue.serverTimestamp(),
-      'readStatus': false,
-    });
-    await batch.commit();
+    try {
+      final batch = _firestore.batch();
+      batch.set(
+          _firestore.collection('complaints').doc(complaint.id),
+          {
+            'adminReply': trimmed,
+            'status': 'resolved',
+            'adminId': adminId,
+            'resolvedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true));
+      batch.set(_firestore.collection('notifications').doc(), {
+        'receiverId': complaint.userId,
+        'senderId': adminId,
+        'title': 'Complaint updated',
+        'message': trimmed,
+        'type': 'complaint',
+        'complaintId': complaint.id,
+        'timestamp': FieldValue.serverTimestamp(),
+        'readStatus': false,
+      });
+      await batch.commit();
+      _log('Complaint ${complaint.id} resolved by $adminId');
+    } on FirebaseException catch (error) {
+      _log('Complaint reply failed [${error.code}] ${error.message}');
+      rethrow;
+    }
   }
 
   Future<void> markComplaintReplyAsRead(String complaintId) async {
@@ -118,5 +131,9 @@ class ComplaintService {
         await _notificationService.markAsRead(notification.id);
       }
     }
+  }
+
+  void _log(String message) {
+    debugPrint('[ComplaintService] $message');
   }
 }

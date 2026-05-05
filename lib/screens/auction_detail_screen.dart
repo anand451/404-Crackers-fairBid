@@ -6,10 +6,13 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../core/widgets/animated_action_button.dart';
 import '../models/auction.dart';
 import '../providers/auth_provider.dart';
+import '../services/server_clock_service.dart';
 import '../services/user_home_service.dart';
 import 'live_auction_screen.dart';
+import 'map_picker_screen.dart';
 
 class AuctionDetailScreen extends StatefulWidget {
   const AuctionDetailScreen({super.key, required this.auction});
@@ -25,19 +28,23 @@ class _AuctionDetailScreenState extends State<AuctionDetailScreen> {
   final TextEditingController _messageController = TextEditingController();
   late Timer _timer;
   late Duration _remaining;
+  DateTime _serverNow = DateTime.now();
   bool _isSavingReminder = false;
   bool _isSending = false;
 
   @override
   void initState() {
     super.initState();
-    _remaining = widget.auction.startTime.difference(DateTime.now());
+    _serverNow = ServerClockService.instance.now();
+    _remaining = widget.auction.startTime.difference(_serverNow);
+    unawaited(ServerClockService.instance.ensureSynced(force: true));
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) {
         return;
       }
       setState(() {
-        _remaining = widget.auction.startTime.difference(DateTime.now());
+        _serverNow = ServerClockService.instance.now();
+        _remaining = widget.auction.startTime.difference(_serverNow);
       });
     });
   }
@@ -110,6 +117,7 @@ class _AuctionDetailScreenState extends State<AuctionDetailScreen> {
         auctionId: widget.auction.id,
         creatorId: widget.auction.sellerId,
         userId: userId,
+        receiverId: widget.auction.sellerId,
         userName: authProvider.userProfile?.fullName ?? 'FairBid user',
         message: _messageController.text,
       );
@@ -231,7 +239,21 @@ class _AuctionDetailScreenState extends State<AuctionDetailScreen> {
                 _CountdownPanel(remaining: _remaining),
                 if (widget.auction.hasLocation) ...[
                   const SizedBox(height: 18),
-                  _AuctionMapPreview(auction: widget.auction),
+                  _AuctionMapPreview(
+                    auction: widget.auction,
+                    onOpenFullscreen: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => MapPickerScreen(
+                            initialPosition: LatLng(
+                              widget.auction.latitude!,
+                              widget.auction.longitude!,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ],
                 const SizedBox(height: 18),
                 SizedBox(
@@ -284,6 +306,7 @@ class _AuctionDetailScreenState extends State<AuctionDetailScreen> {
           _ChatPanel(
             service: _service,
             chatId: userId == null ? null : _chatId(userId),
+            currentUserId: userId,
             controller: _messageController,
             isSending: _isSending,
             onSend: _sendMessage,
@@ -482,36 +505,61 @@ class _CountdownPanel extends StatelessWidget {
 }
 
 class _AuctionMapPreview extends StatelessWidget {
-  const _AuctionMapPreview({required this.auction});
+  const _AuctionMapPreview({
+    required this.auction,
+    required this.onOpenFullscreen,
+  });
 
   final Auction auction;
+  final VoidCallback onOpenFullscreen;
 
   @override
   Widget build(BuildContext context) {
     final position = LatLng(auction.latitude!, auction.longitude!);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: SizedBox(
-        height: 210,
-        child: GoogleMap(
-          initialCameraPosition: CameraPosition(
-            target: position,
-            zoom: 15,
-          ),
-          markers: {
-            Marker(
-              markerId: const MarkerId('auction-location'),
-              position: position,
-              infoWindow: InfoWindow(title: auction.title),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Location Preview',
+              style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
             ),
-          },
-          zoomControlsEnabled: false,
-          scrollGesturesEnabled: false,
-          rotateGesturesEnabled: false,
-          tiltGesturesEnabled: false,
-          myLocationButtonEnabled: false,
+            const Spacer(),
+            TextButton.icon(
+              onPressed: onOpenFullscreen,
+              icon: const Icon(Icons.fullscreen_rounded),
+              label: const Text('Full screen'),
+            ),
+          ],
         ),
-      ),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: SizedBox(
+            height: 210,
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: position,
+                zoom: 15,
+              ),
+              markers: {
+                Marker(
+                  markerId: const MarkerId('auction-location'),
+                  position: position,
+                  infoWindow: InfoWindow(title: auction.title),
+                ),
+              },
+              mapType: MapType.hybrid,
+              zoomControlsEnabled: false,
+              scrollGesturesEnabled: false,
+              rotateGesturesEnabled: false,
+              tiltGesturesEnabled: false,
+              myLocationButtonEnabled: false,
+              onTap: (_) => onOpenFullscreen(),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -520,6 +568,7 @@ class _ChatPanel extends StatelessWidget {
   const _ChatPanel({
     required this.service,
     required this.chatId,
+    required this.currentUserId,
     required this.controller,
     required this.isSending,
     required this.onSend,
@@ -527,6 +576,7 @@ class _ChatPanel extends StatelessWidget {
 
   final UserHomeService service;
   final String? chatId;
+  final String? currentUserId;
   final TextEditingController controller;
   final bool isSending;
   final VoidCallback onSend;
@@ -554,7 +604,10 @@ class _ChatPanel extends StatelessWidget {
             child: chatId == null
                 ? const Center(child: Text('Sign in to start a chat.'))
                 : StreamBuilder<List<ChatMessage>>(
-                    stream: service.streamMessages(chatId!),
+                    stream: service.streamMessagesForViewer(
+                      chatId: chatId!,
+                      viewerId: currentUserId ?? '',
+                    ),
                     builder: (context, snapshot) {
                       final messages = snapshot.data ?? const <ChatMessage>[];
                       if (messages.isEmpty) {
@@ -570,29 +623,93 @@ class _ChatPanel extends StatelessWidget {
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final message = messages[index];
-                          return Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              constraints: const BoxConstraints(maxWidth: 300),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF14B8A6)
-                                    .withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    message.senderName,
-                                    style: GoogleFonts.manrope(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 12,
-                                    ),
+                          final isMine = message.senderId == currentUserId;
+                          return TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0, end: 1),
+                            duration: Duration(
+                              milliseconds: 200 + (index.clamp(0, 5) * 45),
+                            ),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, value, child) {
+                              return Opacity(
+                                opacity: value,
+                                child: Transform.translate(
+                                  offset: Offset(
+                                    isMine
+                                        ? 18 * (1 - value)
+                                        : -18 * (1 - value),
+                                    0,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(message.message),
-                                ],
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: Align(
+                              alignment: isMine
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                constraints:
+                                    const BoxConstraints(maxWidth: 300),
+                                decoration: BoxDecoration(
+                                  color: isMine
+                                      ? const Color(0xFF14B8A6)
+                                          .withValues(alpha: 0.18)
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isMine ? 'You' : message.senderName,
+                                      style: GoogleFonts.manrope(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(message.message),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          DateFormat('hh:mm a')
+                                              .format(message.createdAt),
+                                          style: GoogleFonts.manrope(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.58),
+                                          ),
+                                        ),
+                                        if (isMine) ...[
+                                          const SizedBox(width: 8),
+                                          Icon(
+                                            message.isSeen
+                                                ? Icons.done_all_rounded
+                                                : message.isDelivered
+                                                    ? Icons.done_rounded
+                                                    : Icons.schedule_rounded,
+                                            size: 15,
+                                            color: message.isSeen
+                                                ? const Color(0xFF0F766E)
+                                                : Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withValues(alpha: 0.55),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           );
@@ -610,7 +727,7 @@ class _ChatPanel extends StatelessWidget {
                   minLines: 1,
                   maxLines: 3,
                   decoration: InputDecoration(
-                    hintText: 'Message',
+                    hintText: 'Ask about the auction',
                     filled: true,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
@@ -620,15 +737,18 @@ class _ChatPanel extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              IconButton.filled(
-                onPressed: isSending ? null : onSend,
-                icon: isSending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.send_rounded),
+              AnimatedActionButton(
+                onTap: isSending ? null : onSend,
+                child: IconButton.filled(
+                  onPressed: isSending ? null : onSend,
+                  icon: isSending
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_rounded),
+                ),
               ),
             ],
           ),

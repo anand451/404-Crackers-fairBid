@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/app_theme_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/notification_service.dart';
 import 'admin_complaints_screen.dart';
@@ -51,19 +52,26 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: DecoratedBox(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF04111F),
-              Color(0xFF0B2A45),
-              Color(0xFF0F6A71),
-            ],
+            colors: isDark
+                ? const [
+                    Color(0xFF04111F),
+                    Color(0xFF0B2A45),
+                    Color(0xFF0F6A71),
+                  ]
+                : const [
+                    Color(0xFFF4FFFD),
+                    Color(0xFFE6F4FF),
+                    Color(0xFFD9F7EC),
+                  ],
           ),
         ),
         child: Stack(
@@ -79,7 +87,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                       subtitle:
                           authProvider.userProfile?.fullName ?? 'FairBid Admin',
                       adminId: authProvider.firebaseUser?.uid,
+                      isDark: isDark,
                       onLogout: () => context.read<AuthProvider>().logout(),
+                      onToggleTheme: () =>
+                          context.read<AppThemeProvider>().toggleTheme(),
                     ),
                   ),
                   Expanded(
@@ -126,13 +137,17 @@ class _GlassHeader extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.adminId,
+    required this.isDark,
     required this.onLogout,
+    required this.onToggleTheme,
   });
 
   final String title;
   final String subtitle;
   final String? adminId;
+  final bool isDark;
   final VoidCallback onLogout;
+  final VoidCallback onToggleTheme;
 
   @override
   Widget build(BuildContext context) {
@@ -145,8 +160,14 @@ class _GlassHeader extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(28),
-            color: Colors.white.withValues(alpha: 0.10),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.10)
+                : Colors.white.withValues(alpha: 0.72),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.14)
+                  : const Color(0xFFB6D6CC),
+            ),
           ),
           child: Row(
             children: [
@@ -157,7 +178,7 @@ class _GlassHeader extends StatelessWidget {
                     Text(
                       title,
                       style: GoogleFonts.sora(
-                        color: Colors.white,
+                        color: isDark ? Colors.white : const Color(0xFF10213A),
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
                       ),
@@ -166,13 +187,30 @@ class _GlassHeader extends StatelessWidget {
                     Text(
                       subtitle,
                       style: GoogleFonts.manrope(
-                        color: Colors.white.withValues(alpha: 0.72),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.72)
+                            : const Color(0xFF425466),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
                 ),
               ),
+              IconButton.filledTonal(
+                onPressed: onToggleTheme,
+                style: IconButton.styleFrom(
+                  backgroundColor: isDark
+                      ? const Color(0xFF67E8F9).withValues(alpha: 0.16)
+                      : const Color(0xFF0F766E).withValues(alpha: 0.12),
+                ),
+                icon: Icon(
+                  isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                  color: isDark
+                      ? const Color(0xFFB6F7FF)
+                      : const Color(0xFF0F766E),
+                ),
+              ),
+              const SizedBox(width: 10),
               if (adminId != null) ...[
                 StreamBuilder<int>(
                   stream: notificationService.streamAdminUnreadCount(),
@@ -188,12 +226,17 @@ class _GlassHeader extends StatelessWidget {
                             adminInbox: true,
                           ),
                           style: IconButton.styleFrom(
-                            backgroundColor:
-                                const Color(0xFF67E8F9).withValues(alpha: 0.16),
+                            backgroundColor: isDark
+                                ? const Color(0xFF67E8F9)
+                                    .withValues(alpha: 0.16)
+                                : const Color(0xFF0F766E)
+                                    .withValues(alpha: 0.12),
                           ),
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.notifications_active_outlined,
-                            color: Color(0xFFB6F7FF),
+                            color: isDark
+                                ? const Color(0xFFB6F7FF)
+                                : const Color(0xFF0F766E),
                           ),
                         ),
                         if (count > 0)

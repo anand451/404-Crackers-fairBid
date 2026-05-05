@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "fairbid" "\0"
+            VALUE "FileDescription", "FairBid" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "fairbid" "\0"
+            VALUE "InternalName", "FairBid" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "fairbid.exe" "\0"
-            VALUE "ProductName", "fairbid" "\0"
+            VALUE "OriginalFilename", "FairBid.exe" "\0"
+            VALUE "ProductName", "FairBid" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

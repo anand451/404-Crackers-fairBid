@@ -1,6 +1,6 @@
 {
-    "name": "fairbid",
-    "short_name": "fairbid",
+    "name": "FairBid",
+    "short_name": "FairBid",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -63,9 +63,12 @@ class AdminService {
 
   Stream<List<Auction>> streamAllAuctions() {
     return _firestore.collection('auctions').snapshots().map((snapshot) {
-      final auctions = snapshot.docs
-          .map((doc) => Auction.fromMap(doc.id, doc.data()))
-          .toList()
+      final deduped = <String, Auction>{};
+      for (final doc in snapshot.docs) {
+        final auction = Auction.fromMap(doc.id, doc.data());
+        deduped[auction.id] = auction;
+      }
+      final auctions = deduped.values.toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return auctions;
     });
@@ -76,8 +79,12 @@ class AdminService {
         .collection('auction_requests')
         .snapshots()
         .map((snapshot) {
-      final requests = snapshot.docs
-          .map((doc) => Auction.fromMap(doc.id, doc.data()))
+      final deduped = <String, Auction>{};
+      for (final doc in snapshot.docs) {
+        final request = Auction.fromMap(doc.id, doc.data());
+        deduped[request.id] = request;
+      }
+      final requests = deduped.values
           .where((request) => request.status == 'pending')
           .toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -111,6 +118,7 @@ class AdminService {
         ...approvedAuction.toMap(),
         'approvedAt': FieldValue.serverTimestamp(),
         'approvedBy': adminId,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
       transaction.set(
           requestRef,
@@ -120,6 +128,7 @@ class AdminService {
             'state': 'PENDING',
             'approvedAt': FieldValue.serverTimestamp(),
             'approvedBy': adminId,
+            'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true));
     });
@@ -136,6 +145,7 @@ class AdminService {
       'rejectedAt': FieldValue.serverTimestamp(),
       'rejectedBy': adminId,
       'rejectionReason': reason,
+      'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 

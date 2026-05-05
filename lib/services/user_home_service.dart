@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/auction.dart';
 import 'local_notification_service.dart';
@@ -11,25 +12,37 @@ class ChatMessage {
   const ChatMessage({
     required this.id,
     required this.senderId,
+    required this.receiverId,
     required this.senderName,
     required this.message,
     required this.createdAt,
+    this.deliveredAt,
+    this.seenAt,
   });
 
   final String id;
   final String senderId;
+  final String receiverId;
   final String senderName;
   final String message;
   final DateTime createdAt;
+  final DateTime? deliveredAt;
+  final DateTime? seenAt;
+
+  bool get isDelivered => deliveredAt != null;
+  bool get isSeen => seenAt != null;
 
   factory ChatMessage.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
     return ChatMessage(
       id: doc.id,
       senderId: data['senderId'] as String? ?? '',
+      receiverId: data['receiverId'] as String? ?? '',
       senderName: data['senderName'] as String? ?? 'FairBid user',
       message: data['message'] as String? ?? '',
       createdAt: _readDate(data['createdAt']),
+      deliveredAt: _readNullableDate(data['deliveredAt']),
+      seenAt: _readNullableDate(data['seenAt']),
     );
   }
 }
@@ -79,6 +92,49 @@ class ManagedAuction {
       !auction.isEnded;
 }
 
+class AuctionChatThread {
+  const AuctionChatThread({
+    required this.id,
+    required this.auctionId,
+    required this.participants,
+    required this.updatedAt,
+    required this.lastMessage,
+    required this.lastSenderId,
+    required this.lastSenderName,
+  });
+
+  final String id;
+  final String auctionId;
+  final List<String> participants;
+  final DateTime updatedAt;
+  final String lastMessage;
+  final String lastSenderId;
+  final String lastSenderName;
+
+  String otherParticipant(String currentUserId) {
+    return participants.firstWhere(
+      (participant) => participant != currentUserId,
+      orElse: () => currentUserId,
+    );
+  }
+
+  factory AuctionChatThread.fromDoc(
+      DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? <String, dynamic>{};
+    return AuctionChatThread(
+      id: doc.id,
+      auctionId: data['auctionId'] as String? ?? '',
+      participants: (data['participants'] as List<dynamic>? ?? [])
+          .whereType<String>()
+          .toList(),
+      updatedAt: _readDate(data['lastMessageAt'] ?? data['updatedAt']),
+      lastMessage: data['lastMessage'] as String? ?? '',
+      lastSenderId: data['lastSenderId'] as String? ?? '',
+      lastSenderName: data['lastSenderName'] as String? ?? 'FairBid user',
+    );
+  }
+}
+
 class UserHomeService {
   UserHomeService({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
@@ -92,8 +148,12 @@ class UserHomeService {
         .snapshots()
         .map((snapshot) {
       final now = DateTime.now();
-      final auctions = snapshot.docs
-          .map((doc) => Auction.fromMap(doc.id, doc.data()))
+      final deduped = <String, Auction>{};
+      for (final doc in snapshot.docs) {
+        final auction = Auction.fromMap(doc.id, doc.data());
+        deduped[auction.id] = auction;
+      }
+      final auctions = deduped.values
           .where(
             (auction) =>
                 auction.isVisibleInMarketplace &&
@@ -124,40 +184,125 @@ class UserHomeService {
   }
 
   Stream<List<AuctionReminder>> streamMyReminders(String userId) {
-    return _firestore
-        .collection('notifications')
-        .where('receiverId', isEqualTo: userId)
-        .where('type', isEqualTo: 'auction')
-        .snapshots()
-        .map((snapshot) {
-      final reminders = snapshot.docs
-          .map(AuctionReminder.fromDoc)
-          .where((reminder) => reminder.startsAt.isAfter(DateTime.now()))
+    final controller = StreamController<List<AuctionReminder>>.broadcast();
+    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+        userSubscription;
+    final auctionSubscriptions =
+        <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+    final auctionsById = <String, Auction>{};
+    List<String> reminderIds = <String>[];
+
+    void emit() {
+      final reminders = reminderIds
+          .map((auctionId) {
+            final auction = auctionsById[auctionId];
+            if (auction == null) {
+              return null;
+            }
+            if (!auction.startTime.isAfter(DateTime.now()) &&
+                !auction.isPaused) {
+              return null;
+            }
+            return AuctionReminder(
+              id: 'auction_${userId}_$auctionId',
+              auctionId: auction.id,
+              title: auction.title,
+              startsAt: auction.startTime,
+              read: false,
+            );
+          })
+          .whereType<AuctionReminder>()
           .toList()
         ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
-      return reminders;
-    });
+      controller.add(reminders);
+    }
+
+    Future<void> rebuildAuctionSubscriptions(List<String> ids) async {
+      auctionsById.clear();
+      for (final subscription in auctionSubscriptions) {
+        await subscription.cancel();
+      }
+      auctionSubscriptions.clear();
+
+      if (ids.isEmpty) {
+        emit();
+        return;
+      }
+
+      final chunks = <List<String>>[];
+      for (var index = 0; index < ids.length; index += 10) {
+        final end = (index + 10).clamp(0, ids.length);
+        chunks.add(ids.sublist(index, end));
+      }
+
+      for (final chunk in chunks) {
+        final subscription = _firestore
+            .collection('auctions')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .snapshots()
+            .listen(
+          (snapshot) {
+            final chunkIds = chunk.toSet();
+            auctionsById.removeWhere((key, value) => chunkIds.contains(key));
+            for (final doc in snapshot.docs) {
+              auctionsById[doc.id] = Auction.fromMap(doc.id, doc.data());
+            }
+            emit();
+          },
+          onError: controller.addError,
+        );
+        auctionSubscriptions.add(subscription);
+      }
+    }
+
+    userSubscription =
+        _firestore.collection('users').doc(userId).snapshots().listen(
+      (snapshot) async {
+        final ids =
+            (snapshot.data()?['reminderAuctions'] as List<dynamic>? ?? [])
+                .whereType<String>()
+                .toList();
+        reminderIds = ids;
+        await rebuildAuctionSubscriptions(ids);
+      },
+      onError: controller.addError,
+    );
+
+    controller.onCancel = () async {
+      await userSubscription?.cancel();
+      for (final subscription in auctionSubscriptions) {
+        await subscription.cancel();
+      }
+    };
+
+    return controller.stream;
   }
 
   Future<void> cancelAuctionReminder({
     required String userId,
     required String auctionId,
   }) async {
-    await _firestore.runTransaction((transaction) async {
-      transaction.set(
-        _firestore.collection('users').doc(userId),
-        {
-          'reminderAuctions': FieldValue.arrayRemove([auctionId]),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-      transaction.delete(
-        _firestore.collection('notifications').doc(
-              _auctionReminderNotificationId(userId, auctionId),
-            ),
-      );
-    });
+    try {
+      await _firestore.runTransaction((transaction) async {
+        transaction.set(
+          _firestore.collection('users').doc(userId),
+          {
+            'reminderAuctions': FieldValue.arrayRemove([auctionId]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        transaction.delete(
+          _firestore.collection('notifications').doc(
+                _auctionReminderNotificationId(userId, auctionId),
+              ),
+        );
+      });
+      _log('Reminder removed for user=$userId auction=$auctionId');
+    } on FirebaseException catch (error) {
+      _log('Reminder cancel failed [${error.code}] ${error.message}');
+      rethrow;
+    }
 
     await LocalNotificationService.instance.cancel(
       _stableNotificationId('${userId}_$auctionId'),
@@ -254,6 +399,22 @@ class UserHomeService {
         .map((snapshot) => snapshot.size);
   }
 
+  Stream<List<AuctionChatThread>> streamAuctionChatsForParticipant({
+    required String auctionId,
+    required String participantId,
+  }) {
+    return _firestore
+        .collection('chats')
+        .where('auctionId', isEqualTo: auctionId)
+        .where('participants', arrayContains: participantId)
+        .snapshots()
+        .map((snapshot) {
+      final threads = snapshot.docs.map(AuctionChatThread.fromDoc).toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      return threads;
+    });
+  }
+
   Stream<String?> streamReaction({
     required String auctionId,
     required String userId,
@@ -315,30 +476,36 @@ class UserHomeService {
         .collection('notifications')
         .doc(_auctionReminderNotificationId(userId, auction.id));
 
-    await _firestore.runTransaction((transaction) async {
-      transaction.set(
-        _firestore.collection('users').doc(userId),
-        {
-          'reminderAuctions': FieldValue.arrayUnion([auction.id]),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-      transaction.set(
-          notificationRef,
+    try {
+      await _firestore.runTransaction((transaction) async {
+        transaction.set(
+          _firestore.collection('users').doc(userId),
           {
-            'receiverId': userId,
-            'auctionId': auction.id,
-            'message':
-                'Reminder set for ${auction.title} at ${auction.startTime.toLocal()}.',
-            'title': auction.title,
-            'startsAt': Timestamp.fromDate(auction.startTime),
-            'readStatus': false,
-            'type': 'auction',
-            'timestamp': FieldValue.serverTimestamp(),
+            'reminderAuctions': FieldValue.arrayUnion([auction.id]),
+            'updatedAt': FieldValue.serverTimestamp(),
           },
-          SetOptions(merge: true));
-    });
+          SetOptions(merge: true),
+        );
+        transaction.set(
+            notificationRef,
+            {
+              'receiverId': userId,
+              'auctionId': auction.id,
+              'message':
+                  'Reminder set for ${auction.title} at ${auction.startTime.toLocal()}.',
+              'title': auction.title,
+              'startsAt': Timestamp.fromDate(auction.startTime),
+              'readStatus': false,
+              'type': 'auction',
+              'timestamp': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true));
+      });
+      _log('Reminder saved for user=$userId auction=${auction.id}');
+    } on FirebaseException catch (error) {
+      _log('Reminder save failed [${error.code}] ${error.message}');
+      rethrow;
+    }
 
     await LocalNotificationService.instance.scheduleAuctionStartReminder(
       id: _stableNotificationId('${userId}_${auction.id}'),
@@ -362,6 +529,7 @@ class UserHomeService {
     required String auctionId,
     required String creatorId,
     required String userId,
+    required String receiverId,
     required String userName,
     required String message,
   }) async {
@@ -371,18 +539,54 @@ class UserHomeService {
     }
 
     final chatRef = _firestore.collection('chats').doc(chatId);
-    await chatRef.set({
-      'auctionId': auctionId,
-      'creatorId': creatorId,
-      'participants': [creatorId, userId],
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      await chatRef.set({
+        'auctionId': auctionId,
+        'creatorId': creatorId,
+        'participants': [creatorId, userId],
+        'updatedAt': FieldValue.serverTimestamp(),
+        'lastMessage': trimmed,
+        'lastSenderId': userId,
+        'lastSenderName': userName,
+        'lastMessageAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-    await chatRef.collection('messages').add({
-      'senderId': userId,
-      'senderName': userName,
-      'message': trimmed,
-      'createdAt': FieldValue.serverTimestamp(),
+      await chatRef.collection('messages').add({
+        'senderId': userId,
+        'receiverId': receiverId,
+        'senderName': userName,
+        'message': trimmed,
+        'createdAt': FieldValue.serverTimestamp(),
+        'deliveredAt': FieldValue.serverTimestamp(),
+        'seenAt': null,
+      });
+      _log('Chat message sent in $chatId by $userId');
+    } on FirebaseException catch (error) {
+      _log('Chat send failed [${error.code}] ${error.message}');
+      rethrow;
+    }
+  }
+
+  Stream<List<ChatMessage>> streamMessagesForViewer({
+    required String chatId,
+    required String viewerId,
+  }) {
+    return _firestore
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .asyncMap((snapshot) async {
+      final messages = snapshot.docs.map(ChatMessage.fromDoc).toList();
+      unawaited(
+        _markMessagesSeen(
+          chatId: chatId,
+          viewerId: viewerId,
+          messages: messages,
+        ),
+      );
+      return messages;
     });
   }
 
@@ -424,6 +628,41 @@ class UserHomeService {
       String userId, String auctionId) {
     return 'auction_${userId}_$auctionId';
   }
+
+  Future<void> _markMessagesSeen({
+    required String chatId,
+    required String viewerId,
+    required List<ChatMessage> messages,
+  }) async {
+    final pending = messages
+        .where((message) => message.senderId != viewerId && !message.isSeen)
+        .toList();
+    if (pending.isEmpty) {
+      return;
+    }
+
+    final batch = _firestore.batch();
+    for (final message in pending) {
+      final ref = _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(message.id);
+      batch.set(
+        ref,
+        {
+          'deliveredAt': FieldValue.serverTimestamp(),
+          'seenAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
+  }
+
+  void _log(String message) {
+    debugPrint('[UserHomeService] $message');
+  }
 }
 
 DateTime _readDate(dynamic value) {
@@ -437,4 +676,11 @@ DateTime _readDate(dynamic value) {
     return DateTime.tryParse(value) ?? DateTime.now();
   }
   return DateTime.now();
+}
+
+DateTime? _readNullableDate(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  return _readDate(value);
 }
