@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'admin_home_screen.dart';
 import 'auth_screen.dart';
-import 'home_screen.dart';
+import 'blocked_account_screen.dart';
+import 'user_home_screen.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -20,10 +21,13 @@ class AuthGate extends StatelessWidget {
         }
 
         if (authProvider.isAuthenticated) {
+          if (authProvider.isBlocked) {
+            return const BlockedAccountScreen();
+          }
           if (authProvider.isAdmin) {
             return const AdminHomeScreen();
           }
-          return const HomeScreen();
+          return const UserHomeScreen();
         }
 
         return const AuthScreen();

@@ -12,6 +12,7 @@ class UserModel {
     required this.createdAt,
     required this.userType,
     required this.role,
+    required this.status,
   });
 
   final String uid;
@@ -24,8 +25,10 @@ class UserModel {
   final DateTime createdAt;
   final String userType;
   final String role;
+  final String status;
 
   bool get isAdmin => role == 'admin';
+  bool get isBlocked => status == 'blocked';
 
   factory UserModel.fromMap(String uid, Map<String, dynamic> data) {
     return UserModel(
@@ -39,6 +42,7 @@ class UserModel {
       createdAt: _readDate(data['createdAt']),
       userType: data['userType'] as String? ?? 'Buyer',
       role: data['role'] as String? ?? 'user',
+      status: data['status'] as String? ?? 'active',
     );
   }
 
@@ -54,6 +58,7 @@ class UserModel {
       'createdAt': Timestamp.fromDate(createdAt),
       'userType': userType,
       'role': role,
+      'status': status,
     };
   }
 
@@ -68,6 +73,7 @@ class UserModel {
     DateTime? createdAt,
     String? userType,
     String? role,
+    String? status,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -80,6 +86,7 @@ class UserModel {
       createdAt: createdAt ?? this.createdAt,
       userType: userType ?? this.userType,
       role: role ?? this.role,
+      status: status ?? this.status,
     );
   }
 

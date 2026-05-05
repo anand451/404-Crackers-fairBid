@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
+import 'providers/app_theme_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/auction_provider.dart';
 import 'screens/splash_screen.dart';
+import 'services/local_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +19,14 @@ Future<void> main() async {
     );
   } catch (error) {
     firebaseInitializationError = error.toString();
+  }
+
+  if (firebaseInitializationError == null) {
+    try {
+      await LocalNotificationService.instance.initialize();
+    } catch (error) {
+      debugPrint('Local notifications could not be initialized: $error');
+    }
   }
 
   runApp(
@@ -49,28 +59,50 @@ class FairBidApp extends StatelessWidget {
         centerTitle: false,
       ),
     );
+    final darkTheme = ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF14B8A6),
+        brightness: Brightness.dark,
+      ),
+      scaffoldBackgroundColor: const Color(0xFF07111F),
+      visualDensity: VisualDensity.adaptivePlatformDensity,
+    );
 
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AppThemeProvider()),
         if (firebaseInitializationError == null)
           ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => AuctionProvider()),
       ],
-      child: MaterialApp(
-        title: 'FairBid',
-        theme: baseTheme.copyWith(
-          cardTheme: baseTheme.cardTheme.copyWith(
-            color: Colors.white,
-            elevation: 0,
-            surfaceTintColor: Colors.transparent,
-          ),
-        ),
-        home: firebaseInitializationError == null
-            ? const SplashScreen()
-            : FirebaseSetupScreen(
-                errorMessage: firebaseInitializationError!,
+      child: Consumer<AppThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            title: 'FairBid',
+            themeMode: themeProvider.themeMode,
+            theme: baseTheme.copyWith(
+              cardTheme: baseTheme.cardTheme.copyWith(
+                color: Colors.white,
+                elevation: 0,
+                surfaceTintColor: Colors.transparent,
               ),
-        debugShowCheckedModeBanner: false,
+            ),
+            darkTheme: darkTheme.copyWith(
+              cardTheme: darkTheme.cardTheme.copyWith(
+                color: const Color(0xFF111827),
+                elevation: 0,
+                surfaceTintColor: Colors.transparent,
+              ),
+            ),
+            home: firebaseInitializationError == null
+                ? const SplashScreen()
+                : FirebaseSetupScreen(
+                    errorMessage: firebaseInitializationError!,
+                  ),
+            debugShowCheckedModeBanner: false,
+          );
+        },
       ),
     );
   }

@@ -50,8 +50,12 @@ class AuctionService {
   Future<void> submitAuctionRequest({
     required String title,
     required String description,
+    required String category,
     required double reservePrice,
+    required DateTime startTime,
     required int durationHours,
+    double? latitude,
+    double? longitude,
     required UserModel seller,
   }) async {
     final now = DateTime.now();
@@ -62,9 +66,14 @@ class AuctionService {
       id: '',
       title: title.trim(),
       description: description.trim(),
+      category: category.trim().isEmpty ? 'General' : category.trim(),
+      startTime: startTime,
       currentPrice: reservePrice,
       reservePrice: reservePrice,
-      endTime: now.add(Duration(hours: durationHours)),
+      endTime: startTime.add(Duration(hours: durationHours)),
+      durationHours: durationHours,
+      latitude: latitude,
+      longitude: longitude,
       state: 'PENDING',
       status: 'pending',
       sellerId: seller.uid,

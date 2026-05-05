@@ -3,12 +3,18 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/app_notification.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
+import '../services/local_notification_service.dart';
+import '../services/notification_service.dart';
 
 class AuthProvider extends ChangeNotifier {
-  AuthProvider({AuthService? authService})
-      : _authService = authService ?? AuthService() {
+  AuthProvider({
+    AuthService? authService,
+    NotificationService? notificationService,
+  })  : _authService = authService ?? AuthService(),
+        _notificationService = notificationService ?? NotificationService() {
     _authSubscription = _authService.authStateChanges().listen(
       (user) => unawaited(_handleAuthStateChanged(user)),
       onError: (Object error) {
@@ -20,7 +26,10 @@ class AuthProvider extends ChangeNotifier {
   }
 
   final AuthService _authService;
+  final NotificationService _notificationService;
   StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<UserModel?>? _profileSubscription;
+  StreamSubscription<List<AppNotification>>? _notificationSubscription;
 
   User? _firebaseUser;
   UserModel? _userProfile;
@@ -28,8 +37,11 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoginLoading = false;
   bool _isRegisterLoading = false;
   bool _isResetPasswordLoading = false;
+  bool _isProfileSaving = false;
   String? _authError;
   String? _infoMessage;
+  bool _notificationStreamPrimed = false;
+  final Set<String> _seenNotificationIds = <String>{};
 
   User? get firebaseUser => _firebaseUser;
   UserModel? get userProfile => _userProfile;
@@ -38,15 +50,25 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoginLoading => _isLoginLoading;
   bool get isRegisterLoading => _isRegisterLoading;
   bool get isResetPasswordLoading => _isResetPasswordLoading;
+  bool get isProfileSaving => _isProfileSaving;
   String? get authError => _authError;
   String? get infoMessage => _infoMessage;
   bool get isEmailVerified => _firebaseUser?.emailVerified ?? false;
   bool get isAdmin =>
       _userProfile?.isAdmin == true ||
       (_firebaseUser?.email?.trim().toLowerCase() == AuthService.adminEmail);
+  bool get isBlocked => _userProfile?.isBlocked ?? false;
+  bool get canInteract => isAuthenticated && !isBlocked;
+  String get accountStatus => _userProfile?.status ?? 'active';
   String get role => isAdmin ? 'admin' : 'user';
 
   Future<void> _handleAuthStateChanged(User? user) async {
+    await _profileSubscription?.cancel();
+    await _notificationSubscription?.cancel();
+    _profileSubscription = null;
+    _notificationSubscription = null;
+    _notificationStreamPrimed = false;
+    _seenNotificationIds.clear();
     _firebaseUser = user;
     _authError = null;
 
@@ -57,14 +79,28 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
-    try {
-      _userProfile = await _authService.getUserProfile(user.uid);
-    } catch (_) {
-      _authError = 'Signed in, but we could not load your profile details.';
-    } finally {
-      _isInitializing = false;
-      notifyListeners();
-    }
+    _isInitializing = true;
+    notifyListeners();
+
+    _profileSubscription = _authService.streamUserProfile(user.uid).listen(
+      (profile) {
+        _userProfile = profile;
+        _isInitializing = false;
+        if (profile == null) {
+          _authError = 'Signed in, but we could not load your profile details.';
+        } else if (profile.isBlocked) {
+          _infoMessage =
+              'Your account has been blocked. Contact the FairBid admin team.';
+        }
+        _startNotificationListener(user.uid);
+        notifyListeners();
+      },
+      onError: (_) {
+        _authError = 'Signed in, but we could not load your profile details.';
+        _isInitializing = false;
+        notifyListeners();
+      },
+    );
   }
 
   Future<bool> login({
@@ -156,12 +192,44 @@ class AuthProvider extends ChangeNotifier {
     try {
       await _authService.reloadCurrentUser();
       _firebaseUser = _authService.currentUser;
-      if (_firebaseUser != null) {
-        _userProfile = await _authService.getUserProfile(_firebaseUser!.uid);
-      }
       notifyListeners();
     } catch (_) {
       _authError = 'Unable to refresh your account right now.';
+      notifyListeners();
+    }
+  }
+
+  Future<bool> updateProfile({
+    required String fullName,
+    required String phoneNumber,
+    required DateTime dateOfBirth,
+  }) async {
+    final user = _firebaseUser;
+    if (user == null) {
+      _authError = 'Please sign in again and retry.';
+      notifyListeners();
+      return false;
+    }
+
+    _isProfileSaving = true;
+    _authError = null;
+    _infoMessage = null;
+    notifyListeners();
+
+    try {
+      await _authService.updateUserProfile(
+        uid: user.uid,
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+        dateOfBirth: dateOfBirth,
+      );
+      _infoMessage = 'Profile updated successfully.';
+      return true;
+    } catch (error) {
+      _authError = error.toString();
+      return false;
+    } finally {
+      _isProfileSaving = false;
       notifyListeners();
     }
   }
@@ -185,6 +253,40 @@ class AuthProvider extends ChangeNotifier {
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _profileSubscription?.cancel();
+    _notificationSubscription?.cancel();
     super.dispose();
+  }
+
+  void _startNotificationListener(String userId) {
+    if (_notificationSubscription != null) {
+      return;
+    }
+
+    _notificationSubscription = _notificationService
+        .streamUserNotifications(userId, limit: 20)
+        .listen((notifications) {
+      if (!_notificationStreamPrimed) {
+        _seenNotificationIds.addAll(notifications.map((item) => item.id));
+        _notificationStreamPrimed = true;
+        return;
+      }
+
+      for (final notification in notifications) {
+        final isNew = _seenNotificationIds.add(notification.id);
+        final shouldSurface =
+            notification.type != 'auction' && !notification.readStatus && isNew;
+        if (!shouldSurface) {
+          continue;
+        }
+        unawaited(
+          LocalNotificationService.instance.showInboxNotification(
+            id: notification.id.hashCode.abs(),
+            title: notification.title,
+            body: notification.message,
+          ),
+        );
+      }
+    });
   }
 }

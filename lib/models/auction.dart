@@ -47,9 +47,14 @@ class Auction {
     required this.title,
     required this.currentPrice,
     required this.reservePrice,
-    required this.endTime,
     required this.state,
+    DateTime? startTime,
+    DateTime? endTime,
     this.description = '',
+    this.category = 'General',
+    this.durationHours = 1,
+    this.latitude,
+    this.longitude,
     this.status = 'approved',
     this.sellerId = '',
     this.sellerName = '',
@@ -58,15 +63,23 @@ class Auction {
     this.comments = const [],
     this.requestId,
     this.rejectionReason,
-  }) : createdAt = createdAt ?? DateTime.now();
+  })  : startTime = startTime ?? endTime ?? DateTime.now(),
+        endTime = endTime ??
+            (startTime ?? DateTime.now()).add(Duration(hours: durationHours)),
+        createdAt = createdAt ?? DateTime.now();
 
   final String id;
   final String title;
   final double currentPrice;
   final double reservePrice;
+  final DateTime startTime;
   final DateTime endTime;
   final String state;
   final String description;
+  final String category;
+  final int durationHours;
+  final double? latitude;
+  final double? longitude;
   final String status;
   final String sellerId;
   final String sellerName;
@@ -79,7 +92,13 @@ class Auction {
   bool get isApproved => status == 'approved';
   bool get isPending => status == 'pending';
   bool get isRejected => status == 'rejected';
-  bool get isLive => state == 'LIVE' && endTime.isAfter(DateTime.now());
+  bool get hasLocation => latitude != null && longitude != null;
+  bool get isLive {
+    final now = DateTime.now();
+    return state == 'LIVE' &&
+        !startTime.isAfter(now) &&
+        endTime.isAfter(now);
+  }
 
   factory Auction.fromJson(Map<String, dynamic> json) {
     return Auction.fromMap(
@@ -93,17 +112,28 @@ class Auction {
       id: id,
       title: data['title'] as String? ?? 'Untitled auction',
       description: data['description'] as String? ?? '',
+      category: data['category'] as String? ?? 'General',
       currentPrice: (data['currentPrice'] as num?)?.toDouble() ??
+          (data['price'] as num?)?.toDouble() ??
           (data['reservePrice'] as num?)?.toDouble() ??
           0,
-      reservePrice: (data['reservePrice'] as num?)?.toDouble() ?? 0,
-      endTime: _readDate(data['endTime']),
+      reservePrice: (data['reservePrice'] as num?)?.toDouble() ??
+          (data['price'] as num?)?.toDouble() ??
+          0,
+      startTime: _readDate(data['startTime'] ?? data['endTime']),
+      endTime: _readEndTime(data),
       state: data['state'] as String? ??
           ((data['status'] as String? ?? 'pending') == 'approved'
               ? 'LIVE'
               : 'PENDING'),
+      durationHours: (data['durationHours'] as num?)?.toInt() ??
+          (data['duration'] as num?)?.toInt() ??
+          1,
+      latitude: _readLocationValue(data, 'latitude'),
+      longitude: _readLocationValue(data, 'longitude'),
       status: data['status'] as String? ?? 'pending',
-      sellerId: data['sellerId'] as String? ?? '',
+      sellerId:
+          data['sellerId'] as String? ?? data['createdBy'] as String? ?? '',
       sellerName: data['sellerName'] as String? ?? '',
       sellerEmail: data['sellerEmail'] as String? ?? '',
       createdAt: _readDate(data['createdAt']),
@@ -130,12 +160,23 @@ class Auction {
       'id': id,
       'title': title,
       'description': description,
+      'category': category,
+      'startTime': Timestamp.fromDate(startTime),
       'currentPrice': currentPrice,
       'reservePrice': reservePrice,
+      'price': reservePrice,
+      'duration': durationHours,
+      'durationHours': durationHours,
       'endTime': Timestamp.fromDate(endTime),
+      if (hasLocation)
+        'location': {
+          'lat': latitude,
+          'long': longitude,
+        },
       'state': state,
       'status': status,
       'sellerId': sellerId,
+      'createdBy': sellerId,
       'sellerName': sellerName,
       'sellerEmail': sellerEmail,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -149,9 +190,14 @@ class Auction {
     String? id,
     String? title,
     String? description,
+    String? category,
     double? currentPrice,
     double? reservePrice,
+    DateTime? startTime,
     DateTime? endTime,
+    int? durationHours,
+    double? latitude,
+    double? longitude,
     String? state,
     String? status,
     String? sellerId,
@@ -166,9 +212,14 @@ class Auction {
       id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
+      category: category ?? this.category,
       currentPrice: currentPrice ?? this.currentPrice,
       reservePrice: reservePrice ?? this.reservePrice,
+      startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
+      durationHours: durationHours ?? this.durationHours,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
       state: state ?? this.state,
       status: status ?? this.status,
       sellerId: sellerId ?? this.sellerId,
@@ -192,5 +243,35 @@ class Auction {
       return DateTime.tryParse(value) ?? DateTime.now();
     }
     return DateTime.now();
+  }
+
+  static DateTime _readEndTime(Map<String, dynamic> data) {
+    final explicitEndTime = data['endTime'];
+    if (explicitEndTime != null) {
+      return _readDate(explicitEndTime);
+    }
+
+    final startTime = _readDate(data['startTime']);
+    final durationHours = (data['durationHours'] as num?)?.toInt() ??
+        (data['duration'] as num?)?.toInt() ??
+        1;
+    return startTime.add(Duration(hours: durationHours));
+  }
+
+  static double? _readLocationValue(Map<String, dynamic> data, String key) {
+    final directValue = data[key];
+    if (directValue is num) {
+      return directValue.toDouble();
+    }
+
+    final location = data['location'];
+    if (location is Map) {
+      final value = location[key] ?? location[key == 'latitude' ? 'lat' : 'long'];
+      if (value is num) {
+        return value.toDouble();
+      }
+    }
+
+    return null;
   }
 }

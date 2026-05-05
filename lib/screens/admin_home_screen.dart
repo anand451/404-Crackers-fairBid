@@ -5,7 +5,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../services/notification_service.dart';
+import 'admin_complaints_screen.dart';
 import 'admin_dashboard.dart';
+import 'admin_users_screen.dart';
+import 'notifications_screen.dart';
 import 'auction_requests_screen.dart';
 import 'manage_auctions_screen.dart';
 
@@ -22,13 +26,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   static const _titles = [
     'Manage Auctions',
     'Auction Requests',
+    'Complaints',
+    'Users',
     'Admin Dashboard',
   ];
 
-  final _pages = const [
-    ManageAuctionsScreen(),
-    AuctionRequestsScreen(),
-    AdminDashboard(),
+  final _pages = [
+    const ManageAuctionsScreen(),
+    const AuctionRequestsScreen(),
+    AdminComplaintsScreen(),
+    AdminUsersScreen(),
+    const AdminDashboard(),
   ];
 
   void _changeTab(int index) {
@@ -70,6 +78,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                       title: _titles[_selectedIndex],
                       subtitle:
                           authProvider.userProfile?.fullName ?? 'FairBid Admin',
+                      adminId: authProvider.firebaseUser?.uid,
                       onLogout: () => context.read<AuthProvider>().logout(),
                     ),
                   ),
@@ -116,15 +125,18 @@ class _GlassHeader extends StatelessWidget {
   const _GlassHeader({
     required this.title,
     required this.subtitle,
+    required this.adminId,
     required this.onLogout,
   });
 
   final String title;
   final String subtitle;
+  final String? adminId;
   final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
+    final notificationService = NotificationService();
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(
@@ -161,6 +173,58 @@ class _GlassHeader extends StatelessWidget {
                   ],
                 ),
               ),
+              if (adminId != null) ...[
+                StreamBuilder<int>(
+                  stream: notificationService.streamAdminUnreadCount(),
+                  builder: (context, snapshot) {
+                    final count = snapshot.data ?? 0;
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton.filledTonal(
+                          onPressed: () => showNotificationCenterSheet(
+                            context: context,
+                            title: 'Admin Notifications',
+                            adminInbox: true,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor:
+                                const Color(0xFF67E8F9).withValues(alpha: 0.16),
+                          ),
+                          icon: const Icon(
+                            Icons.notifications_active_outlined,
+                            color: Color(0xFFB6F7FF),
+                          ),
+                        ),
+                        if (count > 0)
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFB7185),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                count > 9 ? '9+' : '$count',
+                                style: GoogleFonts.manrope(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(width: 10),
+              ],
               IconButton.filledTonal(
                 onPressed: onLogout,
                 style: IconButton.styleFrom(
@@ -192,7 +256,9 @@ class _AdminBottomBar extends StatelessWidget {
     const items = [
       (Icons.gavel_rounded, 'Auctions'),
       (Icons.pending_actions_rounded, 'Requests'),
-      (Icons.analytics_rounded, 'Dashboard'),
+      (Icons.support_agent_rounded, 'Support'),
+      (Icons.group_rounded, 'Users'),
+      (Icons.analytics_rounded, 'Pulse'),
     ];
 
     return ClipRRect(

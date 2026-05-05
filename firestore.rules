@@ -6,6 +6,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function userExists(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid));
+    }
+
     function userDoc(uid) {
       return get(/databases/$(database)/documents/users/$(uid));
     }
@@ -14,23 +18,32 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function hasProfile() {
+      return signedIn() && userExists(request.auth.uid);
+    }
+
+    function isActiveAccount() {
+      return hasProfile() && userDoc(request.auth.uid).data.status != 'blocked';
+    }
+
     function isAdmin() {
-      return signedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      return isActiveAccount() &&
         userDoc(request.auth.uid).data.role == 'admin';
     }
 
     function isBootstrapAdminProfile() {
       return signedIn() &&
         request.auth.token.email == 'admin@gmail.com' &&
-        request.resource.data.role == 'admin';
+        request.resource.data.role == 'admin' &&
+        request.resource.data.status == 'active';
     }
 
     function isUserProfile() {
       return signedIn() &&
         request.resource.data.uid == request.auth.uid &&
         request.resource.data.email is string &&
-        request.resource.data.role == 'user';
+        request.resource.data.role == 'user' &&
+        request.resource.data.status == 'active';
     }
 
     function isApprovedAuction() {
@@ -42,14 +55,22 @@ service cloud.firestore {
     }
 
     function createsOwnAuctionRequest() {
-      return signedIn() &&
-        request.resource.data.sellerId == request.auth.uid &&
+      return isActiveAccount() &&
+        (request.resource.data.sellerId == request.auth.uid ||
+          request.resource.data.createdBy == request.auth.uid) &&
         request.resource.data.status == 'pending' &&
         request.resource.data.state == 'PENDING';
     }
 
+    function isPendingRequestOwner() {
+      return isActiveAccount() &&
+        resource.data.status == 'pending' &&
+        (resource.data.sellerId == request.auth.uid ||
+          resource.data.createdBy == request.auth.uid);
+    }
+
     function updatesBidPriceOnly() {
-      return signedIn() &&
+      return isActiveAccount() &&
         resource.data.status == 'approved' &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['currentPrice', 'updatedAt']) &&
@@ -57,14 +78,73 @@ service cloud.firestore {
         request.resource.data.currentPrice > resource.data.currentPrice;
     }
 
+    function sellerUpdatesAuctionDetails() {
+      return isAuctionSeller() &&
+        isActiveAccount() &&
+        request.resource.data.sellerId == resource.data.sellerId &&
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'auctionId',
+            'id',
+            'title',
+            'description',
+            'category',
+            'currentPrice',
+            'reservePrice',
+            'endTime',
+            'updatedAt'
+          ]);
+    }
+
+    function createsOwnAuctionNotification() {
+      return isActiveAccount() &&
+        request.resource.data.receiverId == request.auth.uid &&
+        request.resource.data.type == 'auction';
+    }
+
+    function createsComplaintNotificationForAdmin() {
+      return isActiveAccount() &&
+        request.resource.data.receiverRole == 'admin' &&
+        request.resource.data.type == 'complaint' &&
+        request.resource.data.senderId == request.auth.uid;
+    }
+
+    function marksOwnNotificationRead() {
+      return signedIn() &&
+        resource.data.receiverId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['readStatus', 'readAt']) &&
+        request.resource.data.readStatus == true;
+    }
+
+    function marksAdminNotificationRead() {
+      return isAdmin() &&
+        resource.data.receiverRole == 'admin' &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['readStatus', 'readAt']) &&
+        request.resource.data.readStatus == true;
+    }
+
     match /users/{userId} {
       allow create: if isOwner(userId) &&
         (isUserProfile() || isBootstrapAdminProfile());
       allow read: if isOwner(userId) || isAdmin();
       allow update: if isOwner(userId) &&
+        isActiveAccount() &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['fullName', 'phone', 'aadhaar', 'pan', 'dob', 'userType']) &&
+          .hasOnly([
+            'fullName',
+            'phone',
+            'aadhaar',
+            'pan',
+            'dob',
+            'userType',
+            'reminderAuctions',
+            'updatedAt'
+          ]) &&
         request.resource.data.role == resource.data.role &&
+        request.resource.data.status == resource.data.status &&
         request.resource.data.uid == resource.data.uid;
       allow update, delete: if isAdmin();
     }
@@ -72,23 +152,93 @@ service cloud.firestore {
     match /auction_requests/{requestId} {
       allow create: if createsOwnAuctionRequest();
       allow read: if isAdmin() ||
-        (signedIn() && resource.data.sellerId == request.auth.uid);
-      allow update, delete: if isAdmin();
+        (signedIn() &&
+          (resource.data.sellerId == request.auth.uid ||
+            resource.data.createdBy == request.auth.uid));
+      allow update: if isAdmin() ||
+        (isPendingRequestOwner() &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'auctionId',
+              'id',
+              'title',
+              'description',
+              'category',
+              'currentPrice',
+              'reservePrice',
+              'price',
+              'startTime',
+              'duration',
+              'durationHours',
+              'endTime',
+              'location',
+              'updatedAt'
+            ]));
+      allow delete: if isAdmin() || isPendingRequestOwner();
     }
 
     match /auctions/{auctionId} {
       allow read: if isAdmin() || isAuctionSeller() || isApprovedAuction();
-      allow update: if isAdmin() || updatesBidPriceOnly();
-      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || updatesBidPriceOnly() ||
+        sellerUpdatesAuctionDetails();
+      allow create: if isAdmin();
+      allow delete: if isAdmin() || isAuctionSeller();
+    }
+
+    match /likes/{reactionId} {
+      allow read: if true;
+      allow create, update: if isActiveAccount() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.auctionId is string &&
+        request.resource.data.value in ['like', 'dislike'];
+      allow delete: if isActiveAccount() &&
+        resource.data.userId == request.auth.uid;
+    }
+
+    match /notifications/{notificationId} {
+      allow create: if isAdmin() ||
+        createsOwnAuctionNotification() ||
+        createsComplaintNotificationForAdmin();
+      allow read: if isAdmin() ||
+        (signedIn() && resource.data.receiverId == request.auth.uid);
+      allow update: if isAdmin() || marksOwnNotificationRead() ||
+        marksAdminNotificationRead();
+      allow delete: if isAdmin() ||
+        (isActiveAccount() &&
+          resource.data.receiverId == request.auth.uid &&
+          resource.data.type == 'auction');
+    }
+
+    match /chats/{chatId} {
+      allow create, update: if isActiveAccount() &&
+        request.auth.uid in request.resource.data.participants;
+      allow read: if signedIn() &&
+        request.auth.uid in resource.data.participants;
+
+      match /messages/{messageId} {
+        allow read: if signedIn() &&
+          request.auth.uid in
+            get(/databases/$(database)/documents/chats/$(chatId))
+              .data.participants;
+        allow create: if isActiveAccount() &&
+          request.auth.uid in
+            get(/databases/$(database)/documents/chats/$(chatId))
+              .data.participants;
+      }
     }
 
     match /complaints/{complaintId} {
-      allow create: if signedIn();
-      allow read, update, delete: if isAdmin();
+      allow create: if isActiveAccount() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      allow read: if isAdmin() ||
+        (signedIn() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
     }
 
     match /payments/{paymentId} {
-      allow create: if signedIn();
+      allow create: if isActiveAccount();
       allow read, update, delete: if isAdmin();
     }
 

@@ -17,6 +17,15 @@ class AuthService {
   final FirebaseFirestore _firestore;
 
   Stream<User?> authStateChanges() => _firebaseAuth.authStateChanges();
+  Stream<UserModel?> streamUserProfile(String uid) {
+    return _firestore.collection('users').doc(uid).snapshots().map((snapshot) {
+      final data = snapshot.data();
+      if (!snapshot.exists || data == null) {
+        return null;
+      }
+      return UserModel.fromMap(snapshot.id, data);
+    });
+  }
 
   User? get currentUser => _firebaseAuth.currentUser;
 
@@ -31,6 +40,15 @@ class AuthService {
         password: password,
       );
       await _ensureUserProfileForSignIn(credential.user);
+      final signedInUser = credential.user;
+      if (signedInUser == null) {
+        throw 'We could not complete your sign-in session. Please try again.';
+      }
+      final profile = await getUserProfile(signedInUser.uid);
+      if (profile?.isBlocked == true) {
+        await _firebaseAuth.signOut();
+        throw 'Your account has been blocked by an administrator.';
+      }
       _log('Sign in success for ${email.trim()}');
       return credential;
     } on FirebaseAuthException catch (error) {
@@ -80,6 +98,7 @@ class AuthService {
         createdAt: DateTime.now(),
         userType: userType,
         role: _resolveRole(email.trim()),
+        status: 'active',
       );
 
       _log('Writing user profile for ${user.uid}');
@@ -145,6 +164,25 @@ class AuthService {
     return UserModel.fromMap(document.id, data);
   }
 
+  Future<void> updateUserProfile({
+    required String uid,
+    required String fullName,
+    required String phoneNumber,
+    required DateTime dateOfBirth,
+  }) async {
+    await _firestore.collection('users').doc(uid).set({
+      'fullName': fullName.trim(),
+      'phone': phoneNumber.trim(),
+      'dob': Timestamp.fromDate(dateOfBirth),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    final currentUser = _firebaseAuth.currentUser;
+    if (currentUser != null && currentUser.uid == uid) {
+      await currentUser.updateDisplayName(fullName.trim());
+    }
+  }
+
   Future<void> reloadCurrentUser() async {
     await _firebaseAuth.currentUser?.reload();
   }
@@ -177,6 +215,7 @@ class AuthService {
         createdAt: DateTime.now(),
         userType: role == 'admin' ? 'Admin' : 'Buyer',
         role: role,
+        status: 'active',
       );
       await document.set(profile.toMap());
       _log('Created fallback profile for ${user.uid}');
@@ -184,8 +223,15 @@ class AuthService {
     }
 
     final data = snapshot.data() ?? <String, dynamic>{};
+    final updates = <String, dynamic>{};
     if ((data['role'] as String?) != role) {
-      await document.set({'role': role}, SetOptions(merge: true));
+      updates['role'] = role;
+    }
+    if ((data['status'] as String?) == null) {
+      updates['status'] = 'active';
+    }
+    if (updates.isNotEmpty) {
+      await document.set(updates, SetOptions(merge: true));
       _log('Updated role for ${user.uid} to $role');
     }
   }
