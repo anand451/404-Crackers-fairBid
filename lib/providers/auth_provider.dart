@@ -41,6 +41,10 @@ class AuthProvider extends ChangeNotifier {
   String? get authError => _authError;
   String? get infoMessage => _infoMessage;
   bool get isEmailVerified => _firebaseUser?.emailVerified ?? false;
+  bool get isAdmin =>
+      _userProfile?.isAdmin == true ||
+      (_firebaseUser?.email?.trim().toLowerCase() == AuthService.adminEmail);
+  String get role => isAdmin ? 'admin' : 'user';
 
   Future<void> _handleAuthStateChanged(User? user) async {
     _firebaseUser = user;

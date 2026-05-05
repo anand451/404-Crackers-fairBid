@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
 
 class AuthService {
+  static const String adminEmail = 'admin@gmail.com';
+
   AuthService({
     FirebaseAuth? firebaseAuth,
     FirebaseFirestore? firestore,
@@ -22,10 +24,12 @@ class AuthService {
     required String password,
   }) async {
     try {
-      return await _firebaseAuth.signInWithEmailAndPassword(
+      final credential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
+      await _ensureUserProfileForSignIn(credential.user);
+      return credential;
     } on FirebaseAuthException catch (error) {
       throw _mapAuthException(error);
     } on FirebaseException catch (_) {
@@ -68,6 +72,7 @@ class AuthService {
         dateOfBirth: dateOfBirth,
         createdAt: DateTime.now(),
         userType: userType,
+        role: _resolveRole(email.trim()),
       );
 
       await _firestore.collection('users').doc(user.uid).set(profile.toMap());
@@ -113,6 +118,46 @@ class AuthService {
   }
 
   Future<void> signOut() => _firebaseAuth.signOut();
+
+  Future<void> _ensureUserProfileForSignIn(User? user) async {
+    if (user == null) {
+      return;
+    }
+
+    final document = _firestore.collection('users').doc(user.uid);
+    final snapshot = await document.get();
+    final role = _resolveRole(user.email ?? '');
+
+    if (!snapshot.exists) {
+      final profile = UserModel(
+        uid: user.uid,
+        fullName: user.displayName?.trim().isNotEmpty == true
+            ? user.displayName!.trim()
+            : role == 'admin'
+                ? 'FairBid Admin'
+                : 'FairBid User',
+        email: (user.email ?? '').trim(),
+        phoneNumber: '',
+        aadhaarNumber: '',
+        panNumber: '',
+        dateOfBirth: DateTime(2000),
+        createdAt: DateTime.now(),
+        userType: role == 'admin' ? 'Admin' : 'Buyer',
+        role: role,
+      );
+      await document.set(profile.toMap());
+      return;
+    }
+
+    final data = snapshot.data() ?? <String, dynamic>{};
+    if ((data['role'] as String?) != role) {
+      await document.set({'role': role}, SetOptions(merge: true));
+    }
+  }
+
+  String _resolveRole(String email) {
+    return email.trim().toLowerCase() == adminEmail ? 'admin' : 'user';
+  }
 
   String _mapAuthException(FirebaseAuthException error) {
     switch (error.code) {

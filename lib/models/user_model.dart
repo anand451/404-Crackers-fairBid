@@ -11,6 +11,7 @@ class UserModel {
     required this.dateOfBirth,
     required this.createdAt,
     required this.userType,
+    required this.role,
   });
 
   final String uid;
@@ -22,6 +23,9 @@ class UserModel {
   final DateTime dateOfBirth;
   final DateTime createdAt;
   final String userType;
+  final String role;
+
+  bool get isAdmin => role == 'admin';
 
   factory UserModel.fromMap(String uid, Map<String, dynamic> data) {
     return UserModel(
@@ -34,6 +38,7 @@ class UserModel {
       dateOfBirth: _readDate(data['dob']),
       createdAt: _readDate(data['createdAt']),
       userType: data['userType'] as String? ?? 'Buyer',
+      role: data['role'] as String? ?? 'user',
     );
   }
 
@@ -48,7 +53,34 @@ class UserModel {
       'dob': Timestamp.fromDate(dateOfBirth),
       'createdAt': Timestamp.fromDate(createdAt),
       'userType': userType,
+      'role': role,
     };
+  }
+
+  UserModel copyWith({
+    String? uid,
+    String? fullName,
+    String? email,
+    String? phoneNumber,
+    String? aadhaarNumber,
+    String? panNumber,
+    DateTime? dateOfBirth,
+    DateTime? createdAt,
+    String? userType,
+    String? role,
+  }) {
+    return UserModel(
+      uid: uid ?? this.uid,
+      fullName: fullName ?? this.fullName,
+      email: email ?? this.email,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      aadhaarNumber: aadhaarNumber ?? this.aadhaarNumber,
+      panNumber: panNumber ?? this.panNumber,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      createdAt: createdAt ?? this.createdAt,
+      userType: userType ?? this.userType,
+      role: role ?? this.role,
+    );
   }
 
   static DateTime _readDate(dynamic value) {

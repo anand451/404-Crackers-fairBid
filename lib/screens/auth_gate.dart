@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import 'admin_home_screen.dart';
 import 'auth_screen.dart';
 import 'home_screen.dart';
 
@@ -19,6 +20,9 @@ class AuthGate extends StatelessWidget {
         }
 
         if (authProvider.isAuthenticated) {
+          if (authProvider.isAdmin) {
+            return const AdminHomeScreen();
+          }
           return const HomeScreen();
         }
 

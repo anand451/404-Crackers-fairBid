@@ -59,9 +59,21 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Consumer<AuctionProvider>(
         builder: (context, auctionProvider, child) {
-          if (auctionProvider.auctions.isEmpty) {
+          if (auctionProvider.isLoading) {
             return const Center(
               child: SpinKitWave(color: Colors.blue, size: 50.0),
+            );
+          }
+
+          if (auctionProvider.errorMessage != null) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  auctionProvider.errorMessage!,
+                  textAlign: TextAlign.center,
+                ),
+              ),
             );
           }
 
@@ -96,54 +108,74 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: auctionProvider.auctions.length,
-                  itemBuilder: (context, index) {
-                    final auction = auctionProvider.auctions[index];
-                    final timeLeft = auction.endTime.difference(DateTime.now());
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.blue.shade100,
-                          child: const Icon(Icons.gavel, color: Colors.blue),
+                child: auctionProvider.auctions.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No approved auctions are live yet. Check back after an admin approves new listings.',
+                            textAlign: TextAlign.center,
+                          ),
                         ),
-                        title: Text(auction.title),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                                '\$${auction.currentPrice.toStringAsFixed(2)}'),
-                            Text(
-                              timeLeft.isNegative
-                                  ? 'Closed'
-                                  : '${timeLeft.inMinutes}m ${timeLeft.inSeconds.remainder(60)}s',
-                              style: TextStyle(
-                                color: timeLeft.inMinutes < 5
-                                    ? Colors.red
-                                    : Colors.green,
-                                fontWeight: FontWeight.bold,
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: auctionProvider.auctions.length,
+                        itemBuilder: (context, index) {
+                          final auction = auctionProvider.auctions[index];
+                          final timeLeft =
+                              auction.endTime.difference(DateTime.now());
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(16),
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.blue.shade100,
+                                child:
+                                    const Icon(Icons.gavel, color: Colors.blue),
+                              ),
+                              title: Text(auction.title),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (auction.description.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                          top: 4, bottom: 6),
+                                      child: Text(auction.description),
+                                    ),
+                                  Text(
+                                    '\$${auction.currentPrice.toStringAsFixed(2)}',
+                                  ),
+                                  Text(
+                                    timeLeft.isNegative
+                                        ? 'Closed'
+                                        : '${timeLeft.inMinutes}m ${timeLeft.inSeconds.remainder(60)}s',
+                                    style: TextStyle(
+                                      color: timeLeft.inMinutes < 5
+                                          ? Colors.red
+                                          : Colors.green,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              trailing: ElevatedButton(
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => LiveAuctionScreen(
+                                      auctionId: auction.id,
+                                    ),
+                                  ),
+                                ),
+                                child: const Text('Join Live'),
                               ),
                             ),
-                          ],
-                        ),
-                        trailing: ElevatedButton(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  LiveAuctionScreen(auctionId: auction.id),
-                            ),
-                          ),
-                          child: const Text('Join Live'),
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           );
