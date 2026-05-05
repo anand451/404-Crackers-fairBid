@@ -59,14 +59,31 @@ class Auction {
     this.sellerId = '',
     this.sellerName = '',
     this.sellerEmail = '',
+    this.upiId = '',
+    this.highestBidId,
+    this.highestBidderId,
+    this.highestBidderName,
+    this.winnerId,
+    this.winnerName,
+    this.finalPrice,
+    this.paymentStatus = 'unpaid',
+    this.paymentId,
     DateTime? createdAt,
+    this.startedAt,
+    this.pausedAt,
+    this.soldAt,
+    this.endedAt,
+    this.updatedAt,
+    int? remainingSeconds,
+    this.bidCount = 0,
     this.comments = const [],
     this.requestId,
     this.rejectionReason,
   })  : startTime = startTime ?? endTime ?? DateTime.now(),
         endTime = endTime ??
             (startTime ?? DateTime.now()).add(Duration(hours: durationHours)),
-        createdAt = createdAt ?? DateTime.now();
+        createdAt = createdAt ?? DateTime.now(),
+        remainingSeconds = remainingSeconds ?? durationHours * 3600;
 
   final String id;
   final String title;
@@ -84,7 +101,23 @@ class Auction {
   final String sellerId;
   final String sellerName;
   final String sellerEmail;
+  final String upiId;
+  final String? highestBidId;
+  final String? highestBidderId;
+  final String? highestBidderName;
+  final String? winnerId;
+  final String? winnerName;
+  final double? finalPrice;
+  final String paymentStatus;
+  final String? paymentId;
   final DateTime createdAt;
+  final DateTime? startedAt;
+  final DateTime? pausedAt;
+  final DateTime? soldAt;
+  final DateTime? endedAt;
+  final DateTime? updatedAt;
+  final int remainingSeconds;
+  final int bidCount;
   final List<AuctionComment> comments;
   final String? requestId;
   final String? rejectionReason;
@@ -93,11 +126,19 @@ class Auction {
   bool get isPending => status == 'pending';
   bool get isRejected => status == 'rejected';
   bool get hasLocation => latitude != null && longitude != null;
+  bool get isPaused => state == 'PAUSED';
+  bool get isSold => state == 'SOLD';
+  bool get isEnded => state == 'ENDED';
+  bool get canAcceptBids =>
+      status == 'approved' &&
+      state == 'LIVE' &&
+      endTime.isAfter(DateTime.now());
+  bool get isPaymentCompleted => paymentStatus == 'completed';
+  bool get isVisibleInMarketplace =>
+      status == 'approved' && !isSold && !isEnded && !isRejected;
   bool get isLive {
     final now = DateTime.now();
-    return state == 'LIVE' &&
-        !startTime.isAfter(now) &&
-        endTime.isAfter(now);
+    return state == 'LIVE' && !startTime.isAfter(now) && endTime.isAfter(now);
   }
 
   factory Auction.fromJson(Map<String, dynamic> json) {
@@ -136,7 +177,27 @@ class Auction {
           data['sellerId'] as String? ?? data['createdBy'] as String? ?? '',
       sellerName: data['sellerName'] as String? ?? '',
       sellerEmail: data['sellerEmail'] as String? ?? '',
+      upiId: data['upiId'] as String? ?? '',
+      highestBidId: data['highestBidId'] as String?,
+      highestBidderId: data['highestBidderId'] as String?,
+      highestBidderName: data['highestBidderName'] as String?,
+      winnerId: data['winnerId'] as String?,
+      winnerName: data['winnerName'] as String?,
+      finalPrice: (data['finalPrice'] as num?)?.toDouble(),
+      paymentStatus: data['paymentStatus'] as String? ?? 'unpaid',
+      paymentId: data['paymentId'] as String?,
       createdAt: _readDate(data['createdAt']),
+      startedAt: _readNullableDate(data['startedAt']),
+      pausedAt: _readNullableDate(data['pausedAt']),
+      soldAt: _readNullableDate(data['soldAt']),
+      endedAt: _readNullableDate(data['endedAt']),
+      updatedAt: _readNullableDate(data['updatedAt']),
+      remainingSeconds: (data['remainingSeconds'] as num?)?.toInt() ??
+          ((data['durationHours'] as num?)?.toInt() ??
+                  (data['duration'] as num?)?.toInt() ??
+                  1) *
+              3600,
+      bidCount: (data['bidCount'] as num?)?.toInt() ?? 0,
       comments: (data['comments'] as List<dynamic>? ?? [])
           .whereType<Map>()
           .map(
@@ -179,7 +240,23 @@ class Auction {
       'createdBy': sellerId,
       'sellerName': sellerName,
       'sellerEmail': sellerEmail,
+      'upiId': upiId,
+      'highestBidId': highestBidId,
+      'highestBidderId': highestBidderId,
+      'highestBidderName': highestBidderName,
+      'winnerId': winnerId,
+      'winnerName': winnerName,
+      'finalPrice': finalPrice,
+      'paymentStatus': paymentStatus,
+      'paymentId': paymentId,
       'createdAt': Timestamp.fromDate(createdAt),
+      'startedAt': _writeNullableDate(startedAt),
+      'pausedAt': _writeNullableDate(pausedAt),
+      'soldAt': _writeNullableDate(soldAt),
+      'endedAt': _writeNullableDate(endedAt),
+      'updatedAt': _writeNullableDate(updatedAt),
+      'remainingSeconds': remainingSeconds,
+      'bidCount': bidCount,
       'comments': comments.map((comment) => comment.toMap()).toList(),
       'requestId': requestId,
       'rejectionReason': rejectionReason,
@@ -203,7 +280,23 @@ class Auction {
     String? sellerId,
     String? sellerName,
     String? sellerEmail,
+    String? upiId,
+    String? highestBidId,
+    String? highestBidderId,
+    String? highestBidderName,
+    String? winnerId,
+    String? winnerName,
+    double? finalPrice,
+    String? paymentStatus,
+    String? paymentId,
     DateTime? createdAt,
+    DateTime? startedAt,
+    DateTime? pausedAt,
+    DateTime? soldAt,
+    DateTime? endedAt,
+    DateTime? updatedAt,
+    int? remainingSeconds,
+    int? bidCount,
     List<AuctionComment>? comments,
     String? requestId,
     String? rejectionReason,
@@ -225,7 +318,23 @@ class Auction {
       sellerId: sellerId ?? this.sellerId,
       sellerName: sellerName ?? this.sellerName,
       sellerEmail: sellerEmail ?? this.sellerEmail,
+      upiId: upiId ?? this.upiId,
+      highestBidId: highestBidId ?? this.highestBidId,
+      highestBidderId: highestBidderId ?? this.highestBidderId,
+      highestBidderName: highestBidderName ?? this.highestBidderName,
+      winnerId: winnerId ?? this.winnerId,
+      winnerName: winnerName ?? this.winnerName,
+      finalPrice: finalPrice ?? this.finalPrice,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      paymentId: paymentId ?? this.paymentId,
       createdAt: createdAt ?? this.createdAt,
+      startedAt: startedAt ?? this.startedAt,
+      pausedAt: pausedAt ?? this.pausedAt,
+      soldAt: soldAt ?? this.soldAt,
+      endedAt: endedAt ?? this.endedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      remainingSeconds: remainingSeconds ?? this.remainingSeconds,
+      bidCount: bidCount ?? this.bidCount,
       comments: comments ?? this.comments,
       requestId: requestId ?? this.requestId,
       rejectionReason: rejectionReason ?? this.rejectionReason,
@@ -243,6 +352,20 @@ class Auction {
       return DateTime.tryParse(value) ?? DateTime.now();
     }
     return DateTime.now();
+  }
+
+  static DateTime? _readNullableDate(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    return _readDate(value);
+  }
+
+  static Timestamp? _writeNullableDate(DateTime? value) {
+    if (value == null) {
+      return null;
+    }
+    return Timestamp.fromDate(value);
   }
 
   static DateTime _readEndTime(Map<String, dynamic> data) {
@@ -266,7 +389,8 @@ class Auction {
 
     final location = data['location'];
     if (location is Map) {
-      final value = location[key] ?? location[key == 'latitude' ? 'lat' : 'long'];
+      final value =
+          location[key] ?? location[key == 'latitude' ? 'lat' : 'long'];
       if (value is num) {
         return value.toDouble();
       }

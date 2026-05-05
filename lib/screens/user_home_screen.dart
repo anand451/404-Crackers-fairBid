@@ -12,6 +12,7 @@ import '../services/local_notification_service.dart';
 import '../services/user_home_service.dart';
 import 'auction_detail_screen.dart';
 import 'create_auction_screen.dart';
+import 'live_auction_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
 
@@ -194,7 +195,7 @@ class _HomeTab extends StatelessWidget {
                   hasScrollBody: false,
                   child: _EmptyState(
                     icon: Icons.event_busy_rounded,
-                    message: 'No future auctions are live yet.',
+                    message: 'No live or upcoming auctions are available yet.',
                   ),
                 );
               }
@@ -592,7 +593,7 @@ class _UpcomingAuctionsTab extends StatelessWidget {
                 if (reminders.isEmpty) {
                   return const _EmptyState(
                     icon: Icons.notifications_none_rounded,
-                    message: 'Auctions you save with Notify Me appear here.',
+                    message: 'Auction reminders you save will appear here.',
                   );
                 }
                 return ListView.separated(
@@ -879,6 +880,16 @@ class _OwnerAuctionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final stateLabel = switch (auction.state) {
+      'LIVE' => 'LIVE',
+      'PAUSED' => 'PAUSED',
+      'SOLD' => 'SOLD',
+      'ENDED' => 'ENDED',
+      _ => item.collection == 'auctions'
+          ? 'APPROVED'
+          : auction.status.toUpperCase(),
+    };
+
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
@@ -887,11 +898,23 @@ class _OwnerAuctionTile extends StatelessWidget {
           style: GoogleFonts.sora(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          '${auction.category} - ${DateFormat('dd MMM, hh:mm a').format(auction.startTime)}',
+          '${auction.category} - ${DateFormat('dd MMM, hh:mm a').format(auction.startTime)} - $stateLabel',
         ),
         trailing: Wrap(
           spacing: 8,
           children: [
+            if (item.canJoinLive)
+              IconButton(
+                tooltip: 'Open live room',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => LiveAuctionScreen(auctionId: auction.id),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.play_circle_outline_rounded),
+              ),
             IconButton(
               tooltip: 'Edit',
               onPressed: item.canEdit ? () => _edit(context) : null,

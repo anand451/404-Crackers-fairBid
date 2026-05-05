@@ -14,6 +14,14 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(uid));
     }
 
+    function auctionExists(auctionId) {
+      return exists(/databases/$(database)/documents/auctions/$(auctionId));
+    }
+
+    function auctionDoc(auctionId) {
+      return get(/databases/$(database)/documents/auctions/$(auctionId));
+    }
+
     function isOwner(uid) {
       return signedIn() && request.auth.uid == uid;
     }
@@ -59,7 +67,8 @@ service cloud.firestore {
         (request.resource.data.sellerId == request.auth.uid ||
           request.resource.data.createdBy == request.auth.uid) &&
         request.resource.data.status == 'pending' &&
-        request.resource.data.state == 'PENDING';
+        request.resource.data.state == 'PENDING' &&
+        request.resource.data.upiId is string;
     }
 
     function isPendingRequestOwner() {
@@ -69,35 +78,36 @@ service cloud.firestore {
           resource.data.createdBy == request.auth.uid);
     }
 
-    function updatesBidPriceOnly() {
+    function sellerRunsAuctionLifecycle() {
       return isActiveAccount() &&
-        resource.data.status == 'approved' &&
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['currentPrice', 'updatedAt']) &&
-        request.resource.data.currentPrice is number &&
-        request.resource.data.currentPrice > resource.data.currentPrice;
-    }
-
-    function sellerUpdatesAuctionDetails() {
-      return isAuctionSeller() &&
-        isActiveAccount() &&
+        resource.data.sellerId == request.auth.uid &&
         request.resource.data.sellerId == resource.data.sellerId &&
         request.resource.data.status == resource.data.status &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly([
-            'auctionId',
-            'id',
-            'title',
-            'description',
-            'category',
-            'currentPrice',
-            'reservePrice',
+            'state',
+            'startTime',
             'endTime',
-            'updatedAt'
+            'startedAt',
+            'pausedAt',
+            'soldAt',
+            'endedAt',
+            'updatedAt',
+            'remainingSeconds',
+            'winnerId',
+            'winnerName',
+            'highestBidId',
+            'highestBidderId',
+            'highestBidderName',
+            'finalPrice',
+            'paymentStatus',
+            'paymentId',
+            'currentPrice',
+            'bidCount'
           ]);
     }
 
-    function createsOwnAuctionNotification() {
+    function createsOwnAuctionReminderNotification() {
       return isActiveAccount() &&
         request.resource.data.receiverId == request.auth.uid &&
         request.resource.data.type == 'auction';
@@ -108,6 +118,26 @@ service cloud.firestore {
         request.resource.data.receiverRole == 'admin' &&
         request.resource.data.type == 'complaint' &&
         request.resource.data.senderId == request.auth.uid;
+    }
+
+    function createsSellerAuctionNotification() {
+      return isActiveAccount() &&
+        request.resource.data.type in ['auction', 'payment'] &&
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.auctionId is string &&
+        auctionExists(request.resource.data.auctionId) &&
+        auctionDoc(request.resource.data.auctionId).data.sellerId ==
+          request.auth.uid;
+    }
+
+    function createsWinnerPaymentNotification() {
+      return isActiveAccount() &&
+        request.resource.data.type == 'payment' &&
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.auctionId is string &&
+        auctionExists(request.resource.data.auctionId) &&
+        auctionDoc(request.resource.data.auctionId).data.winnerId ==
+          request.auth.uid;
     }
 
     function marksOwnNotificationRead() {
@@ -124,6 +154,21 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['readStatus', 'readAt']) &&
         request.resource.data.readStatus == true;
+    }
+
+    function validWinnerPayment() {
+      return isActiveAccount() &&
+        request.resource.data.auctionId is string &&
+        auctionExists(request.resource.data.auctionId) &&
+        auctionDoc(request.resource.data.auctionId).data.state == 'SOLD' &&
+        auctionDoc(request.resource.data.auctionId).data.winnerId ==
+          request.auth.uid &&
+        request.resource.data.buyerId == request.auth.uid &&
+        request.resource.data.sellerId ==
+          auctionDoc(request.resource.data.auctionId).data.sellerId &&
+        request.resource.data.amount ==
+          auctionDoc(request.resource.data.auctionId).data.finalPrice &&
+        request.resource.data.status == 'completed';
     }
 
     match /users/{userId} {
@@ -173,6 +218,8 @@ service cloud.firestore {
               'durationHours',
               'endTime',
               'location',
+              'upiId',
+              'remainingSeconds',
               'updatedAt'
             ]));
       allow delete: if isAdmin() || isPendingRequestOwner();
@@ -180,10 +227,37 @@ service cloud.firestore {
 
     match /auctions/{auctionId} {
       allow read: if isAdmin() || isAuctionSeller() || isApprovedAuction();
-      allow update: if isAdmin() || updatesBidPriceOnly() ||
-        sellerUpdatesAuctionDetails();
+      allow update: if isAdmin() || sellerRunsAuctionLifecycle();
       allow create: if isAdmin();
       allow delete: if isAdmin() || isAuctionSeller();
+
+      match /bids/{bidId} {
+        allow read: if isAdmin() ||
+          (auctionExists(auctionId) &&
+            (auctionDoc(auctionId).data.status == 'approved' ||
+              auctionDoc(auctionId).data.sellerId == request.auth.uid));
+        allow create: if isActiveAccount() &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.bidAmount is number &&
+          auctionExists(auctionId) &&
+          auctionDoc(auctionId).data.status == 'approved' &&
+          auctionDoc(auctionId).data.state == 'LIVE' &&
+          auctionDoc(auctionId).data.sellerId != request.auth.uid &&
+          request.resource.data.bidAmount >
+            auctionDoc(auctionId).data.currentPrice;
+        allow update, delete: if false;
+      }
+    }
+
+    match /auction_watchers/{auctionId}/members/{userId} {
+      allow read: if isAdmin() ||
+        (auctionExists(auctionId) &&
+          (auctionDoc(auctionId).data.status == 'approved' ||
+            auctionDoc(auctionId).data.sellerId == request.auth.uid));
+      allow create, update: if isActiveAccount() &&
+        request.auth.uid == userId &&
+        request.resource.data.userId == request.auth.uid;
+      allow delete: if isActiveAccount() && request.auth.uid == userId;
     }
 
     match /likes/{reactionId} {
@@ -198,8 +272,10 @@ service cloud.firestore {
 
     match /notifications/{notificationId} {
       allow create: if isAdmin() ||
-        createsOwnAuctionNotification() ||
-        createsComplaintNotificationForAdmin();
+        createsOwnAuctionReminderNotification() ||
+        createsComplaintNotificationForAdmin() ||
+        createsSellerAuctionNotification() ||
+        createsWinnerPaymentNotification();
       allow read: if isAdmin() ||
         (signedIn() && resource.data.receiverId == request.auth.uid);
       allow update: if isAdmin() || marksOwnNotificationRead() ||
@@ -207,7 +283,7 @@ service cloud.firestore {
       allow delete: if isAdmin() ||
         (isActiveAccount() &&
           resource.data.receiverId == request.auth.uid &&
-          resource.data.type == 'auction');
+          resource.data.type in ['auction', 'payment']);
     }
 
     match /chats/{chatId} {
@@ -238,8 +314,12 @@ service cloud.firestore {
     }
 
     match /payments/{paymentId} {
-      allow create: if isActiveAccount();
-      allow read, update, delete: if isAdmin();
+      allow create: if validWinnerPayment();
+      allow read: if isAdmin() ||
+        (signedIn() &&
+          (resource.data.buyerId == request.auth.uid ||
+            resource.data.sellerId == request.auth.uid));
+      allow update, delete: if isAdmin();
     }
 
     match /{document=**} {

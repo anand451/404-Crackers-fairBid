@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../services/auction_service.dart';
+import '../utils/auth_validators.dart';
 import 'map_picker_screen.dart';
 
 class CreateAuctionScreen extends StatefulWidget {
@@ -37,6 +38,7 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
   final _descriptionController = TextEditingController();
   final _reserveController = TextEditingController();
   final _durationController = TextEditingController();
+  final _upiController = TextEditingController();
 
   String _selectedCategory = _categories.first;
   DateTime? _selectedStartTime;
@@ -141,6 +143,7 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
         reservePrice: double.parse(_reserveController.text),
         startTime: startTime,
         durationHours: int.parse(_durationController.text),
+        upiId: _upiController.text.trim(),
         latitude: _selectedLocation?.latitude,
         longitude: _selectedLocation?.longitude,
         seller: userProfile,
@@ -175,6 +178,7 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
     _descriptionController.clear();
     _reserveController.clear();
     _durationController.clear();
+    _upiController.clear();
     setState(() {
       _selectedCategory = _categories.first;
       _selectedStartTime = null;
@@ -329,6 +333,18 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
           _AnimatedFormSection(
             index: 6,
             child: TextFormField(
+              controller: _upiController,
+              decoration: const InputDecoration(
+                labelText: 'Seller UPI ID',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+              ),
+              validator: AuthValidators.upiId,
+            ),
+          ),
+          _AnimatedFormSection(
+            index: 7,
+            child: TextFormField(
               controller: _reserveController,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -410,6 +426,7 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
     _descriptionController.dispose();
     _reserveController.dispose();
     _durationController.dispose();
+    _upiController.dispose();
     super.dispose();
   }
 }

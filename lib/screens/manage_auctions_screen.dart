@@ -430,7 +430,14 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      AuctionStatusBadge(status: auction.status),
+                      AuctionStatusBadge(
+                        status: auction.isSold ||
+                                auction.isEnded ||
+                                auction.isLive ||
+                                auction.isPaused
+                            ? auction.state.toLowerCase()
+                            : auction.status,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -453,6 +460,16 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                         icon: Icons.bolt_rounded,
                         label:
                             'Current ${auction.currentPrice.toStringAsFixed(0)}',
+                      ),
+                      if (auction.finalPrice != null)
+                        AdminInfoPill(
+                          icon: Icons.payments_rounded,
+                          label:
+                              'Final ${auction.finalPrice!.toStringAsFixed(0)}',
+                        ),
+                      AdminInfoPill(
+                        icon: Icons.account_balance_wallet_outlined,
+                        label: auction.paymentStatus.toUpperCase(),
                       ),
                       AdminInfoPill(
                         icon: Icons.schedule_rounded,
@@ -568,6 +585,22 @@ class AuctionStatusBadge extends StatelessWidget {
       'approved' => (
           const Color(0xFF14B8A6).withValues(alpha: 0.20),
           const Color(0xFF99F6E4),
+        ),
+      'live' => (
+          const Color(0xFF14B8A6).withValues(alpha: 0.20),
+          const Color(0xFF99F6E4),
+        ),
+      'paused' => (
+          const Color(0xFFFFC107).withValues(alpha: 0.20),
+          const Color(0xFFFFE082),
+        ),
+      'sold' => (
+          const Color(0xFFF97316).withValues(alpha: 0.20),
+          const Color(0xFFFFD7B5),
+        ),
+      'ended' => (
+          const Color(0xFFEF4444).withValues(alpha: 0.20),
+          const Color(0xFFFFB4AB),
         ),
       'rejected' => (
           const Color(0xFFEF4444).withValues(alpha: 0.20),

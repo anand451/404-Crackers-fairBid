@@ -38,6 +38,7 @@ class AdminDashboardStats {
     required this.totalUsers,
     required this.totalAuctions,
     required this.activeAuctions,
+    required this.completedAuctions,
     required this.totalRevenue,
     required this.complaintsCount,
     required this.payments,
@@ -47,6 +48,7 @@ class AdminDashboardStats {
   final int totalUsers;
   final int totalAuctions;
   final int activeAuctions;
+  final int completedAuctions;
   final double totalRevenue;
   final int complaintsCount;
   final List<AdminRecordItem> payments;
@@ -101,7 +103,7 @@ class AdminService {
         id: request.id,
         requestId: request.id,
         status: 'approved',
-        state: 'LIVE',
+        state: 'PENDING',
         rejectionReason: null,
       );
 
@@ -115,7 +117,7 @@ class AdminService {
           {
             ...request.toMap(),
             'status': 'approved',
-            'state': 'LIVE',
+            'state': 'PENDING',
             'approvedAt': FieldValue.serverTimestamp(),
             'approvedBy': adminId,
           },
@@ -192,6 +194,9 @@ class AdminService {
           totalUsers: usersSnapshot?.docs.length ?? 0,
           totalAuctions: auctions.length,
           activeAuctions: auctions.where((auction) => auction.isLive).length,
+          completedAuctions: auctions
+              .where((auction) => auction.isSold || auction.isEnded)
+              .length,
           totalRevenue: payments.fold<double>(
             0,
             (total, payment) => total + payment.amount,

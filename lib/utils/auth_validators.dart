@@ -69,6 +69,17 @@ class AuthValidators {
     return null;
   }
 
+  static String? upiId(String? value) {
+    final input = value?.trim() ?? '';
+    if (input.isEmpty) {
+      return 'UPI ID is required';
+    }
+    if (!RegExp(r'^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$').hasMatch(input)) {
+      return 'Enter a valid UPI ID like name@bank';
+    }
+    return null;
+  }
+
   static String? confirmPassword(String? value, String password) {
     if ((value ?? '').isEmpty) {
       return 'Please confirm your password';

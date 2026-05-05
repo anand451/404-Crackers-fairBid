@@ -49,6 +49,12 @@ class AdminDashboard extends StatelessWidget {
             accent: const Color(0xFF34D399),
           ),
           _MetricSpec(
+            label: 'Completed',
+            value: stats.completedAuctions.toDouble(),
+            icon: Icons.task_alt_rounded,
+            accent: const Color(0xFFF97316),
+          ),
+          _MetricSpec(
             label: 'Revenue',
             value: stats.totalRevenue,
             icon: Icons.payments_rounded,

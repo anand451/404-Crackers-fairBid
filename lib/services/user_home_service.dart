@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -70,6 +72,11 @@ class ManagedAuction {
 
   bool get canEdit => collection == 'auction_requests' && auction.isPending;
   bool get canDelete => collection == 'auction_requests' && auction.isPending;
+  bool get canJoinLive =>
+      collection == 'auctions' &&
+      auction.status == 'approved' &&
+      !auction.isSold &&
+      !auction.isEnded;
 }
 
 class UserHomeService {
@@ -87,9 +94,31 @@ class UserHomeService {
       final now = DateTime.now();
       final auctions = snapshot.docs
           .map((doc) => Auction.fromMap(doc.id, doc.data()))
-          .where((auction) => auction.startTime.isAfter(now))
+          .where(
+            (auction) =>
+                auction.isVisibleInMarketplace &&
+                (auction.startTime.isAfter(now) ||
+                    auction.isLive ||
+                    auction.isPaused),
+          )
           .toList()
-        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+        ..sort((a, b) {
+          int rank(Auction auction) {
+            if (auction.isLive) {
+              return 0;
+            }
+            if (auction.isPaused) {
+              return 1;
+            }
+            return 2;
+          }
+
+          final byRank = rank(a).compareTo(rank(b));
+          if (byRank != 0) {
+            return byRank;
+          }
+          return a.startTime.compareTo(b.startTime);
+        });
       return auctions;
     });
   }
@@ -152,22 +181,68 @@ class UserHomeService {
   }
 
   Stream<List<ManagedAuction>> streamMyManagedAuctions(String userId) {
-    return _firestore
-        .collection('auction_requests')
-        .where('sellerId', isEqualTo: userId)
-        .snapshots()
-        .map((snapshot) {
-      final requests = snapshot.docs
-          .map(
-            (doc) => ManagedAuction(
-              auction: Auction.fromMap(doc.id, doc.data()),
-              collection: 'auction_requests',
-            ),
-          )
-          .toList()
+    final controller = StreamController<List<ManagedAuction>>.broadcast();
+    QuerySnapshot<Map<String, dynamic>>? requestSnapshot;
+    QuerySnapshot<Map<String, dynamic>>? liveSnapshot;
+
+    void emit() {
+      final items = <ManagedAuction>[
+        ...?requestSnapshot?.docs.map(
+          (doc) => ManagedAuction(
+            auction: Auction.fromMap(doc.id, doc.data()),
+            collection: 'auction_requests',
+          ),
+        ),
+        ...?liveSnapshot?.docs.map(
+          (doc) => ManagedAuction(
+            auction: Auction.fromMap(doc.id, doc.data()),
+            collection: 'auctions',
+          ),
+        ),
+      ];
+
+      final deduped = <String, ManagedAuction>{};
+      for (final item in items) {
+        deduped[item.auction.id] = item;
+      }
+
+      final merged = deduped.values.toList()
         ..sort((a, b) => b.auction.createdAt.compareTo(a.auction.createdAt));
-      return requests;
-    });
+      controller.add(merged);
+    }
+
+    final subscriptions = <StreamSubscription<dynamic>>[
+      _firestore
+          .collection('auction_requests')
+          .where('sellerId', isEqualTo: userId)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          requestSnapshot = snapshot;
+          emit();
+        },
+        onError: controller.addError,
+      ),
+      _firestore
+          .collection('auctions')
+          .where('sellerId', isEqualTo: userId)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          liveSnapshot = snapshot;
+          emit();
+        },
+        onError: controller.addError,
+      ),
+    ];
+
+    controller.onCancel = () async {
+      for (final subscription in subscriptions) {
+        await subscription.cancel();
+      }
+    };
+
+    return controller.stream;
   }
 
   Stream<int> streamUnreadNotificationCount(String userId) {

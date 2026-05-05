@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../models/auction.dart';
 import '../providers/auth_provider.dart';
 import '../services/user_home_service.dart';
+import 'live_auction_screen.dart';
 
 class AuctionDetailScreen extends StatefulWidget {
   const AuctionDetailScreen({super.key, required this.auction});
@@ -253,6 +254,27 @@ class _AuctionDetailScreenState extends State<AuctionDetailScreen> {
                             ),
                     ),
                     label: const Text('Notify Me'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.tonalIcon(
+                    onPressed: widget.auction.status == 'approved' &&
+                            !widget.auction.isSold &&
+                            !widget.auction.isEnded
+                        ? () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => LiveAuctionScreen(
+                                    auctionId: widget.auction.id),
+                              ),
+                            );
+                          }
+                        : null,
+                    icon: const Icon(Icons.gavel_rounded),
+                    label: const Text('Open Live Room'),
                   ),
                 ),
               ],
