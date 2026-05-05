@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'providers/auction_provider.dart';
 import 'screens/splash_screen.dart';
@@ -11,7 +12,9 @@ Future<void> main() async {
 
   String? firebaseInitializationError;
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } catch (error) {
     firebaseInitializationError = error.toString();
   }
@@ -120,7 +123,7 @@ class FirebaseSetupScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      '1. Run flutterfire configure\n2. Add the generated platform config files\n3. Restart the app',
+                      '1. Run flutterfire configure\n2. Put google-services.json in android/app/\n3. Restart the app',
                     ),
                     const SizedBox(height: 16),
                     Text(

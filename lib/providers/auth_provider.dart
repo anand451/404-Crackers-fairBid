@@ -77,12 +77,14 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      debugPrint('[AuthProvider] Login requested for ${email.trim()}');
       await _authService.signIn(email: email, password: password);
       _infoMessage = isEmailVerified
           ? 'Welcome back to FairBid.'
           : 'Signed in successfully. Please verify your email when you can.';
       return true;
     } catch (error) {
+      debugPrint('[AuthProvider] Login failed: $error');
       _authError = error.toString();
       return false;
     } finally {
@@ -107,6 +109,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      debugPrint('[AuthProvider] Register requested for ${email.trim()}');
       await _authService.register(
         fullName: fullName,
         email: email,
@@ -121,6 +124,7 @@ class AuthProvider extends ChangeNotifier {
           'Account created successfully. A verification email has been sent.';
       return true;
     } catch (error) {
+      debugPrint('[AuthProvider] Register failed: $error');
       _authError = error.toString();
       return false;
     } finally {

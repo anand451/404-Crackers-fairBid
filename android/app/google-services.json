@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "588852404405",
+    "project_id": "fairbid-5394a",
+    "storage_bucket": "fairbid-5394a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:588852404405:android:0750496a8e791c4ca85efc",
+        "android_client_info": {
+          "package_name": "FairBid.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "588852404405-lqj6a31kvei0dkvt46tdk60dpd4ltu15.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrxODcP3ICgZNSyqSvBioN3WEdnUBXxIc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "588852404405-lqj6a31kvei0dkvt46tdk60dpd4ltu15.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:588852404405:android:1040cc142fefb1faa85efc",
+        "android_client_info": {
+          "package_name": "com.example.equibid_flutter"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "588852404405-lqj6a31kvei0dkvt46tdk60dpd4ltu15.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrxODcP3ICgZNSyqSvBioN3WEdnUBXxIc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "588852404405-lqj6a31kvei0dkvt46tdk60dpd4ltu15.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

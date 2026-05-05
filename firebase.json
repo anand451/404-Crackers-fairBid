@@ -1,11 +1,1 @@
-{
-  "firestore": {
-    "database": "(default)",
-    "location": "asia-south1",
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
-  "auth": {
-    "providers": {}
-  }
-}
+{"firestore":{"database":"(default)","location":"asia-south1","rules":"firestore.rules","indexes":"firestore.indexes.json"},"auth":{"providers":{}},"flutter":{"platforms":{"android":{"default":{"projectId":"fairbid-5394a","appId":"1:588852404405:android:1040cc142fefb1faa85efc","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"fairbid-5394a","configurations":{"android":"1:588852404405:android:1040cc142fefb1faa85efc","ios":"1:588852404405:ios:e314b981428e4a28a85efc"}}}}}}

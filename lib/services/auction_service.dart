@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/auction.dart';
 import '../models/user_model.dart';
@@ -10,10 +11,14 @@ class AuctionService {
   final FirebaseFirestore _firestore;
 
   Stream<List<Auction>> streamApprovedAuctions() {
-    return _firestore.collection('auctions').snapshots().map((snapshot) {
+    return _firestore
+        .collection('auctions')
+        .where('status', isEqualTo: 'approved')
+        .snapshots()
+        .map((snapshot) {
+      _log('Received ${snapshot.docs.length} auction docs');
       final auctions = snapshot.docs
           .map((doc) => Auction.fromMap(doc.id, doc.data()))
-          .where((auction) => auction.status == 'approved')
           .toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return auctions;
@@ -21,6 +26,7 @@ class AuctionService {
   }
 
   Future<Auction?> getAuctionById(String auctionId) async {
+    _log('Reading auction $auctionId');
     final doc = await _firestore.collection('auctions').doc(auctionId).get();
     final data = doc.data();
     if (!doc.exists || data == null) {
@@ -49,6 +55,9 @@ class AuctionService {
     required UserModel seller,
   }) async {
     final now = DateTime.now();
+    _log(
+      'Submitting auction request: title="${title.trim()}", seller=${seller.uid}, reserve=$reservePrice, durationHours=$durationHours',
+    );
     final request = Auction(
       id: '',
       title: title.trim(),
@@ -66,18 +75,31 @@ class AuctionService {
     );
 
     final document = _firestore.collection('auction_requests').doc();
-    await document.set(
-      request.copyWith(id: document.id, requestId: document.id).toMap(),
-    );
+    try {
+      await document.set(
+        request.copyWith(id: document.id, requestId: document.id).toMap(),
+      );
+      _log('Auction request created successfully with id ${document.id}');
+    } on FirebaseException catch (error) {
+      _log(
+        'Auction request write failed [${error.code}] ${error.message} for seller ${seller.uid}',
+      );
+      rethrow;
+    }
   }
 
   Future<void> syncBidPrice({
     required String auctionId,
     required double amount,
   }) async {
+    _log('Syncing bid price $amount for auction $auctionId');
     await _firestore.collection('auctions').doc(auctionId).set({
       'currentPrice': amount,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  void _log(String message) {
+    debugPrint('[AuctionService] $message');
   }
 }

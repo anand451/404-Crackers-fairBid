@@ -39,6 +39,11 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
     });
 
     try {
+      debugPrint(
+        '[CreateAuctionScreen] Creating request title="${_titleController.text.trim()}" '
+        'reserve=${_reserveController.text.trim()} duration=${_durationController.text.trim()} '
+        'user=${userProfile.uid}',
+      );
       await AuctionService().submitAuctionRequest(
         title: _titleController.text,
         description: _descriptionController.text,
@@ -58,13 +63,20 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
           content: Text('Auction request submitted for admin approval.'),
         ),
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('[CreateAuctionScreen] Request failed: $error');
+      debugPrintStack(
+        label: '[CreateAuctionScreen] Stack trace',
+        stackTrace: stackTrace,
+      );
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('We could not submit your request right now.'),
+        SnackBar(
+          content: Text(
+            'Auction request failed: $error',
+          ),
         ),
       );
     } finally {

@@ -52,7 +52,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _registerPasswordObscured = true;
   bool _confirmPasswordObscured = true;
   DateTime? _selectedDateOfBirth;
-  String _selectedUserType = 'Buyer';
+  final String _selectedUserType = 'Buyer';
 
   @override
   void dispose() {
@@ -613,18 +613,6 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          _UserTypePicker(
-            selectedValue: _selectedUserType,
-            onChanged: (value) {
-              if (value == null) {
-                return;
-              }
-              setState(() {
-                _selectedUserType = value;
-              });
-            },
-          ),
-          const SizedBox(height: 14),
           CustomTextField(
             controller: _registerPasswordController,
             label: 'Password',
@@ -883,59 +871,6 @@ class _GlowButtonState extends State<_GlowButton> {
                 ),
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _UserTypePicker extends StatelessWidget {
-  const _UserTypePicker({
-    required this.selectedValue,
-    required this.onChanged,
-  });
-
-  final String selectedValue;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-          ),
-          child: DropdownButtonFormField<String>(
-            initialValue: selectedValue,
-            dropdownColor: const Color(0xFF15365C),
-            iconEnabledColor: Colors.white,
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              labelText: 'User Type',
-              labelStyle: TextStyle(
-                color: Colors.white.withValues(alpha: 0.68),
-              ),
-              prefixIcon: Icon(
-                Icons.work_outline_rounded,
-                color: Colors.white.withValues(alpha: 0.78),
-              ),
-            ),
-            style: GoogleFonts.manrope(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-            ),
-            items: const [
-              DropdownMenuItem(value: 'Buyer', child: Text('Buyer')),
-              DropdownMenuItem(value: 'Seller', child: Text('Seller')),
-            ],
-            onChanged: onChanged,
           ),
         ),
       ),

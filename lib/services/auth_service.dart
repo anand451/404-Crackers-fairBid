@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/user_model.dart';
 
@@ -24,17 +25,22 @@ class AuthService {
     required String password,
   }) async {
     try {
+      _log('Attempting sign in for ${email.trim()}');
       final credential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
       await _ensureUserProfileForSignIn(credential.user);
+      _log('Sign in success for ${email.trim()}');
       return credential;
     } on FirebaseAuthException catch (error) {
+      _log('Sign in failed [${error.code}] ${error.message}');
       throw _mapAuthException(error);
     } on FirebaseException catch (_) {
+      _log('Sign in failed due to Firestore/network issue');
       throw 'We could not reach FairBid services. Please try again.';
     } catch (_) {
+      _log('Sign in failed due to unexpected issue');
       throw 'Something went wrong while signing in. Please try again.';
     }
   }
@@ -52,6 +58,7 @@ class AuthService {
     UserCredential? credential;
 
     try {
+      _log('Creating auth user for ${email.trim()}');
       credential = await _firebaseAuth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
@@ -65,7 +72,7 @@ class AuthService {
       final profile = UserModel(
         uid: user.uid,
         fullName: fullName.trim(),
-        email: email.trim(),
+        email: (user.email ?? email).trim(),
         phoneNumber: phoneNumber.trim(),
         aadhaarNumber: aadhaarNumber.trim(),
         panNumber: panNumber.trim().toUpperCase(),
@@ -75,39 +82,64 @@ class AuthService {
         role: _resolveRole(email.trim()),
       );
 
+      _log('Writing user profile for ${user.uid}');
+      await user.getIdToken(true);
       await _firestore.collection('users').doc(user.uid).set(profile.toMap());
       await user.updateDisplayName(fullName.trim());
-      await user.sendEmailVerification();
+      try {
+        await user.sendEmailVerification();
+        _log('Verification email sent to ${email.trim()}');
+      } on FirebaseAuthException catch (error) {
+        _log(
+          'Verification email failed [${error.code}] ${error.message}; continuing registration',
+        );
+      }
 
+      _log('Registration completed for ${user.uid}');
       return credential;
     } on FirebaseAuthException catch (error) {
+      _log('Registration failed [${error.code}] ${error.message}');
       throw _mapAuthException(error);
-    } on FirebaseException catch (_) {
+    } on FirebaseException catch (error) {
+      _log('Firestore profile write failed [${error.code}] ${error.message}');
       if (credential?.user != null) {
-        await credential!.user!.delete();
+        try {
+          await credential!.user!.delete();
+        } on FirebaseAuthException catch (deleteError) {
+          _log(
+            'Could not clean up auth user after profile failure [${deleteError.code}] ${deleteError.message}',
+          );
+        }
       }
-      throw 'We could not save your profile right now. Please try again.';
+      throw _mapFirestoreException(error);
     } catch (error) {
+      _log('Registration failed unexpectedly: $error');
       rethrow;
     }
   }
 
   Future<void> sendPasswordResetEmail(String email) async {
     try {
+      _log('Sending reset email to ${email.trim()}');
       await _firebaseAuth.sendPasswordResetEmail(email: email.trim());
     } on FirebaseAuthException catch (error) {
+      _log('Password reset failed [${error.code}] ${error.message}');
       throw _mapAuthException(error);
     } on FirebaseException catch (_) {
+      _log('Password reset failed due to Firestore/network issue');
       throw 'We could not send the reset link right now. Please try again.';
     } catch (_) {
+      _log('Password reset failed due to unexpected issue');
       throw 'Something went wrong while sending the reset link.';
     }
   }
 
   Future<UserModel?> getUserProfile(String uid) async {
+    _log('Reading user profile for $uid');
     final document = await _firestore.collection('users').doc(uid).get();
     final data = document.data();
     if (data == null) {
+      _log('No profile found for $uid');
       return null;
     }
     return UserModel.fromMap(document.id, data);
@@ -124,6 +156,7 @@ class AuthService {
       return;
     }
 
+    _log('Ensuring profile exists for sign-in user ${user.uid}');
     final document = _firestore.collection('users').doc(user.uid);
     final snapshot = await document.get();
     final role = _resolveRole(user.email ?? '');
@@ -146,12 +179,14 @@ class AuthService {
         role: role,
       );
       await document.set(profile.toMap());
+      _log('Created fallback profile for ${user.uid}');
       return;
     }
 
     final data = snapshot.data() ?? <String, dynamic>{};
     if ((data['role'] as String?) != role) {
       await document.set({'role': role}, SetOptions(merge: true));
+      _log('Updated role for ${user.uid} to $role');
     }
   }
 
@@ -183,5 +218,23 @@ class AuthService {
       default:
         return error.message ?? 'Authentication failed. Please try again.';
     }
+  }
+
+  String _mapFirestoreException(FirebaseException error) {
+    switch (error.code) {
+      case 'permission-denied':
+        return 'Firestore rules blocked profile creation. Deploy the latest rules and try again.';
+      case 'unavailable':
+        return 'Firestore is temporarily unavailable. Check your internet connection and try again.';
+      case 'not-found':
+        return 'Firestore is not set up for this Firebase project yet.';
+      default:
+        return error.message ??
+            'We could not save your profile right now. Please try again.';
+    }
+  }
+
+  void _log(String message) {
+    debugPrint('[AuthService] $message');
   }
 }
