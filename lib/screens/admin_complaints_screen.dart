@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/complaint.dart';
 import '../providers/auth_provider.dart';
 import '../services/complaint_service.dart';
+import 'manage_auctions_screen.dart';
 
 class AdminComplaintsScreen extends StatelessWidget {
   AdminComplaintsScreen({super.key, ComplaintService? complaintService})
@@ -19,9 +20,9 @@ class AdminComplaintsScreen extends StatelessWidget {
       stream: _complaintService.streamAllComplaints(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return const _AdminStateCard(
+          return _AdminStateCard(
             icon: Icons.cloud_off_rounded,
-            message: 'Unable to load complaints right now.',
+            message: 'Unable to load complaints right now.\n${snapshot.error}',
           );
         }
         if (!snapshot.hasData) {
@@ -57,120 +58,124 @@ class AdminComplaintsScreen extends StatelessWidget {
       BuildContext context, Complaint complaint) async {
     final controller = TextEditingController(text: complaint.adminReply);
     final formKey = GlobalKey<FormState>();
-    var isSubmitting = false;
     final adminId = context.read<AuthProvider>().firebaseUser?.uid;
     if (adminId == null) {
       return;
     }
 
-    await showModalBottomSheet<void>(
+    final replyMessage = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                12,
-                20,
-                MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Reply to complaint',
-                      style: GoogleFonts.sora(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      complaint.message,
-                      style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: controller,
-                      minLines: 4,
-                      maxLines: 7,
-                      validator: (value) {
-                        if ((value ?? '').trim().isEmpty) {
-                          return 'Reply is required';
-                        }
-                        return null;
-                      },
-                      decoration: const InputDecoration(
-                        hintText: 'Write your response...',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: FilledButton(
-                        onPressed: isSubmitting
-                            ? null
-                            : () async {
-                                if (!formKey.currentState!.validate()) {
-                                  return;
-                                }
-                                setModalState(() {
-                                  isSubmitting = true;
-                                });
-                                try {
-                                  await _complaintService.replyToComplaint(
-                                    complaint: complaint,
-                                    adminId: adminId,
-                                    reply: controller.text,
-                                  );
-                                  if (!context.mounted) {
-                                    return;
-                                  }
-                                  Navigator.of(context).pop();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      behavior: SnackBarBehavior.floating,
-                                      content: Text(
-                                        'Reply sent and user notified.',
-                                      ),
-                                    ),
-                                  );
-                                } catch (error) {
-                                  setModalState(() {
-                                    isSubmitting = false;
-                                  });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      behavior: SnackBarBehavior.floating,
-                                      backgroundColor: const Color(0xFFB3261E),
-                                      content: Text(error.toString()),
-                                    ),
-                                  );
-                                }
-                              },
-                        child: Text(
-                          isSubmitting ? 'Sending...' : 'Resolve complaint',
-                        ),
-                      ),
-                    ),
-                  ],
+        final palette = AdminUiPalette.of(sheetContext);
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            12,
+            20,
+            MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Reply to complaint',
+                  style: GoogleFonts.sora(
+                    color: palette.primaryText,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 10),
+                Text(
+                  complaint.message,
+                  style: GoogleFonts.manrope(
+                    color: palette.primaryText,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: controller,
+                  minLines: 4,
+                  maxLines: 7,
+                  validator: (value) {
+                    if ((value ?? '').trim().isEmpty) {
+                      return 'Reply is required';
+                    }
+                    return null;
+                  },
+                  style: TextStyle(color: palette.primaryText),
+                  decoration: InputDecoration(
+                    hintText: 'Write your response...',
+                    hintStyle: TextStyle(color: palette.secondaryText),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: () {
+                      if (!formKey.currentState!.validate()) {
+                        return;
+                      }
+                      Navigator.of(
+                        sheetContext,
+                      ).pop(controller.text.trim());
+                    },
+                    child: const Text(
+                      'Resolve complaint',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
 
     controller.dispose();
+
+    if (replyMessage == null || !context.mounted) {
+      return;
+    }
+
+    try {
+      await _complaintService.replyToComplaint(
+        complaint: complaint,
+        adminId: adminId,
+        reply: replyMessage,
+      );
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'Reply sent and user notified.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFB3261E),
+          content: Text(error.toString()),
+        ),
+      );
+    }
   }
 }
 
@@ -185,6 +190,7 @@ class _ComplaintAdminCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     final statusColor = complaint.isResolved
         ? const Color(0xFF34D399)
         : const Color(0xFFFFC107);
@@ -194,8 +200,8 @@ class _ComplaintAdminCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        color: Colors.white.withValues(alpha: 0.10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        color: palette.panelBackground,
+        border: Border.all(color: palette.panelBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,7 +212,7 @@ class _ComplaintAdminCard extends StatelessWidget {
                 child: Text(
                   complaint.userName,
                   style: GoogleFonts.sora(
-                    color: Colors.white,
+                    color: palette.primaryText,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
@@ -234,7 +240,7 @@ class _ComplaintAdminCard extends StatelessWidget {
           Text(
             complaint.userEmail,
             style: GoogleFonts.manrope(
-              color: Colors.white.withValues(alpha: 0.70),
+              color: palette.secondaryText,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -242,7 +248,7 @@ class _ComplaintAdminCard extends StatelessWidget {
           Text(
             complaint.message,
             style: GoogleFonts.manrope(
-              color: Colors.white,
+              color: palette.primaryText,
               fontWeight: FontWeight.w700,
               height: 1.4,
             ),
@@ -254,12 +260,14 @@ class _ComplaintAdminCard extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
-                color: const Color(0xFF14B8A6).withValues(alpha: 0.16),
+                color: const Color(0xFF14B8A6).withValues(
+                  alpha: palette.isDark ? 0.16 : 0.12,
+                ),
               ),
               child: Text(
                 complaint.adminReply,
                 style: GoogleFonts.manrope(
-                  color: Colors.white,
+                  color: palette.primaryText,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -271,7 +279,7 @@ class _ComplaintAdminCard extends StatelessWidget {
               Text(
                 DateFormat('dd MMM, hh:mm a').format(complaint.timestamp),
                 style: GoogleFonts.manrope(
-                  color: Colors.white.withValues(alpha: 0.56),
+                  color: palette.tertiaryText,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -312,6 +320,7 @@ class _AdminStateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -324,7 +333,7 @@ class _AdminStateCard extends StatelessWidget {
               message,
               textAlign: TextAlign.center,
               style: GoogleFonts.manrope(
-                color: Colors.white,
+                color: palette.primaryText,
                 fontWeight: FontWeight.w700,
               ),
             ),

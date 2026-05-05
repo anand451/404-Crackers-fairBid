@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/auction.dart';
+import 'auction_service.dart';
 import 'local_notification_service.dart';
 
 class ChatMessage {
@@ -83,8 +84,8 @@ class ManagedAuction {
   final Auction auction;
   final String collection;
 
-  bool get canEdit => collection == 'auction_requests' && auction.isPending;
-  bool get canDelete => collection == 'auction_requests' && auction.isPending;
+  bool get canEdit => !auction.isLive && !auction.isPaused && !auction.isSold && !auction.isEnded;
+  bool get canDelete => !auction.isLive && !auction.isPaused && !auction.isSold && !auction.isEnded;
   bool get canJoinLive =>
       collection == 'auctions' &&
       auction.status == 'approved' &&
@@ -283,25 +284,28 @@ class UserHomeService {
     required String auctionId,
   }) async {
     try {
-      await _firestore.runTransaction((transaction) async {
-        transaction.set(
-          _firestore.collection('users').doc(userId),
-          {
-            'reminderAuctions': FieldValue.arrayRemove([auctionId]),
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
-        transaction.delete(
-          _firestore.collection('notifications').doc(
-                _auctionReminderNotificationId(userId, auctionId),
-              ),
-        );
-      });
+      final batch = _firestore.batch();
+      batch.set(_firestore.collection('users').doc(userId), {
+        'reminderAuctions': FieldValue.arrayRemove([auctionId]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      batch.delete(_reminderRegistrationRef(userId: userId, auctionId: auctionId));
+      await batch.commit();
       _log('Reminder removed for user=$userId auction=$auctionId');
     } on FirebaseException catch (error) {
       _log('Reminder cancel failed [${error.code}] ${error.message}');
       rethrow;
+    }
+
+    try {
+      await _firestore
+          .collection('notifications')
+          .doc(_auctionReminderNotificationId(userId, auctionId))
+          .delete();
+    } on FirebaseException catch (error) {
+      _log(
+        'Legacy reminder notification cleanup skipped [${error.code}] ${error.message}',
+      );
     }
 
     await LocalNotificationService.instance.cancel(
@@ -405,11 +409,11 @@ class UserHomeService {
   }) {
     return _firestore
         .collection('chats')
-        .where('auctionId', isEqualTo: auctionId)
         .where('participants', arrayContains: participantId)
         .snapshots()
         .map((snapshot) {
       final threads = snapshot.docs.map(AuctionChatThread.fromDoc).toList()
+        ..removeWhere((thread) => thread.auctionId != auctionId)
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       return threads;
     });
@@ -472,35 +476,25 @@ class UserHomeService {
     required String userId,
     required Auction auction,
   }) async {
-    final notificationRef = _firestore
-        .collection('notifications')
-        .doc(_auctionReminderNotificationId(userId, auction.id));
-
     try {
-      await _firestore.runTransaction((transaction) async {
-        transaction.set(
-          _firestore.collection('users').doc(userId),
-          {
-            'reminderAuctions': FieldValue.arrayUnion([auction.id]),
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
-        transaction.set(
-            notificationRef,
-            {
-              'receiverId': userId,
-              'auctionId': auction.id,
-              'message':
-                  'Reminder set for ${auction.title} at ${auction.startTime.toLocal()}.',
-              'title': auction.title,
-              'startsAt': Timestamp.fromDate(auction.startTime),
-              'readStatus': false,
-              'type': 'auction',
-              'timestamp': FieldValue.serverTimestamp(),
-            },
-            SetOptions(merge: true));
-      });
+      final batch = _firestore.batch();
+      batch.set(_firestore.collection('users').doc(userId), {
+        'reminderAuctions': FieldValue.arrayUnion([auction.id]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      batch.set(
+        _reminderRegistrationRef(userId: userId, auctionId: auction.id),
+        {
+          'userId': userId,
+          'auctionId': auction.id,
+          'title': auction.title,
+          'startsAt': Timestamp.fromDate(auction.startTime),
+          'createdAt': FieldValue.serverTimestamp(),
+          'triggeredAt': null,
+        },
+        SetOptions(merge: true),
+      );
+      await batch.commit();
       _log('Reminder saved for user=$userId auction=${auction.id}');
     } on FirebaseException catch (error) {
       _log('Reminder save failed [${error.code}] ${error.message}');
@@ -560,6 +554,20 @@ class UserHomeService {
         'deliveredAt': FieldValue.serverTimestamp(),
         'seenAt': null,
       });
+      if (receiverId != userId) {
+        await _firestore.collection('notifications').add({
+          'receiverId': receiverId,
+          'senderId': userId,
+          'auctionId': auctionId,
+          'title': 'New auction chat message',
+          'message': '$userName: $trimmed',
+          'type': 'auction',
+          'timestamp': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+          'readStatus': false,
+          'isRead': false,
+        });
+      }
       _log('Chat message sent in $chatId by $userId');
     } on FirebaseException catch (error) {
       _log('Chat send failed [${error.code}] ${error.message}');
@@ -599,6 +607,68 @@ class UserHomeService {
 
   Future<void> deleteMyAuctionRequest(String auctionId) async {
     await _firestore.collection('auction_requests').doc(auctionId).delete();
+  }
+
+  Future<void> resubmitAuctionForApproval({
+    required ManagedAuction item,
+    required Auction updatedAuction,
+  }) async {
+    final normalized = updatedAuction.copyWith(
+      id: item.auction.id,
+      requestId: item.auction.id,
+      sellerId: item.auction.sellerId,
+      sellerName: item.auction.sellerName,
+      sellerEmail: item.auction.sellerEmail,
+      status: 'pending',
+      state: 'PENDING',
+      rejectionReason: null,
+      createdAt: item.auction.createdAt,
+      updatedAt: DateTime.now(),
+      currentPrice: updatedAuction.reservePrice,
+      highestBidId: null,
+      highestBidderId: null,
+      highestBidderName: null,
+      winnerId: null,
+      winnerName: null,
+      finalPrice: null,
+      paymentStatus: 'unpaid',
+      paymentId: null,
+      startedAt: null,
+      pausedAt: null,
+      soldAt: null,
+      endedAt: null,
+      remainingSeconds: updatedAuction.durationHours * 3600,
+      bidCount: 0,
+      comments: const [],
+    );
+
+    final batch = _firestore.batch();
+    final requestRef = _firestore.collection('auction_requests').doc(item.auction.id);
+    batch.set(requestRef, normalized.toMap(), SetOptions(merge: true));
+
+    if (item.collection == 'auctions') {
+      final auctionRef = _firestore.collection('auctions').doc(item.auction.id);
+      batch.set(auctionRef, normalized.toMap(), SetOptions(merge: true));
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> deleteMyAuction(ManagedAuction item) async {
+    await AuctionService(firestore: _firestore).deleteAuctionCascade(
+      item.auction.id,
+    );
+  }
+
+  DocumentReference<Map<String, dynamic>> _reminderRegistrationRef({
+    required String userId,
+    required String auctionId,
+  }) {
+    return _firestore
+        .collection('user_notifications')
+        .doc(userId)
+        .collection('auctions')
+        .doc(auctionId);
   }
 
   static String chatIdFor({

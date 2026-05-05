@@ -78,6 +78,57 @@ service cloud.firestore {
           resource.data.createdBy == request.auth.uid);
     }
 
+    function managesOwnAuctionRequest() {
+      return isActiveAccount() &&
+        (resource.data.sellerId == request.auth.uid ||
+          resource.data.createdBy == request.auth.uid);
+    }
+
+    function resubmitsOwnAuctionRequest() {
+      return managesOwnAuctionRequest() &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.state == 'PENDING' &&
+        request.resource.data.sellerId == resource.data.sellerId &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'auctionId',
+            'id',
+            'title',
+            'description',
+            'category',
+            'currentPrice',
+            'reservePrice',
+            'price',
+            'startTime',
+            'duration',
+            'durationHours',
+            'endTime',
+            'location',
+            'upiId',
+            'remainingSeconds',
+            'updatedAt',
+            'status',
+            'state',
+            'rejectionReason',
+            'requestId',
+            'paymentStatus',
+            'paymentId',
+            'highestBidId',
+            'highestBidderId',
+            'highestBidderName',
+            'winnerId',
+            'winnerName',
+            'finalPrice',
+            'startedAt',
+            'pausedAt',
+            'soldAt',
+            'endedAt',
+            'bidCount',
+            'comments'
+          ]);
+    }
+
     function sellerRunsAuctionLifecycle() {
       return isActiveAccount() &&
         resource.data.sellerId == request.auth.uid &&
@@ -107,6 +158,53 @@ service cloud.firestore {
           ]);
     }
 
+    function sellerRequestsAuctionReapproval() {
+      return isActiveAccount() &&
+        resource.data.sellerId == request.auth.uid &&
+        request.resource.data.sellerId == resource.data.sellerId &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        !(resource.data.state in ['LIVE', 'PAUSED', 'SOLD', 'ENDED']) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.state == 'PENDING' &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'auctionId',
+            'id',
+            'title',
+            'description',
+            'category',
+            'currentPrice',
+            'reservePrice',
+            'price',
+            'startTime',
+            'duration',
+            'durationHours',
+            'endTime',
+            'location',
+            'upiId',
+            'remainingSeconds',
+            'updatedAt',
+            'status',
+            'state',
+            'rejectionReason',
+            'requestId',
+            'paymentStatus',
+            'paymentId',
+            'highestBidId',
+            'highestBidderId',
+            'highestBidderName',
+            'winnerId',
+            'winnerName',
+            'finalPrice',
+            'startedAt',
+            'pausedAt',
+            'soldAt',
+            'endedAt',
+            'bidCount',
+            'comments'
+          ]);
+    }
+
     function createsOwnAuctionReminderNotification() {
       return isActiveAccount() &&
         request.resource.data.receiverId == request.auth.uid &&
@@ -130,6 +228,16 @@ service cloud.firestore {
           request.auth.uid;
     }
 
+    function createsAuctionChatNotification() {
+      return isActiveAccount() &&
+        request.resource.data.type == 'auction' &&
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.auctionId is string &&
+        request.resource.data.receiverId is string &&
+        request.resource.data.receiverId != request.auth.uid &&
+        auctionExists(request.resource.data.auctionId);
+    }
+
     function createsWinnerPaymentNotification() {
       return isActiveAccount() &&
         request.resource.data.type == 'payment' &&
@@ -140,20 +248,35 @@ service cloud.firestore {
           request.auth.uid;
     }
 
+    function managesAuctionById(auctionId) {
+      return isActiveAccount() &&
+        auctionExists(auctionId) &&
+        auctionDoc(auctionId).data.sellerId == request.auth.uid;
+    }
+
+    function deletesManagedAuctionNotification() {
+      return isActiveAccount() &&
+        resource.data.auctionId is string &&
+        resource.data.type in ['auction', 'payment'] &&
+        managesAuctionById(resource.data.auctionId);
+    }
+
     function marksOwnNotificationRead() {
       return signedIn() &&
         resource.data.receiverId == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['readStatus', 'readAt']) &&
-        request.resource.data.readStatus == true;
+          .hasOnly(['readStatus', 'isRead', 'readAt']) &&
+        request.resource.data.readStatus == true &&
+        request.resource.data.isRead == true;
     }
 
     function marksAdminNotificationRead() {
       return isAdmin() &&
         resource.data.receiverRole == 'admin' &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['readStatus', 'readAt']) &&
-        request.resource.data.readStatus == true;
+          .hasOnly(['readStatus', 'isRead', 'readAt']) &&
+        request.resource.data.readStatus == true &&
+        request.resource.data.isRead == true;
     }
 
     function validWinnerPayment() {
@@ -200,34 +323,14 @@ service cloud.firestore {
         (signedIn() &&
           (resource.data.sellerId == request.auth.uid ||
             resource.data.createdBy == request.auth.uid));
-      allow update: if isAdmin() ||
-        (isPendingRequestOwner() &&
-          request.resource.data.status == 'pending' &&
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly([
-              'auctionId',
-              'id',
-              'title',
-              'description',
-              'category',
-              'currentPrice',
-              'reservePrice',
-              'price',
-              'startTime',
-              'duration',
-              'durationHours',
-              'endTime',
-              'location',
-              'upiId',
-              'remainingSeconds',
-              'updatedAt'
-            ]));
-      allow delete: if isAdmin() || isPendingRequestOwner();
+      allow update: if isAdmin() || resubmitsOwnAuctionRequest();
+      allow delete: if isAdmin() || managesOwnAuctionRequest();
     }
 
     match /auctions/{auctionId} {
       allow read: if isAdmin() || isAuctionSeller() || isApprovedAuction();
-      allow update: if isAdmin() || sellerRunsAuctionLifecycle();
+      allow update: if isAdmin() || sellerRunsAuctionLifecycle() ||
+        sellerRequestsAuctionReapproval();
       allow create: if isAdmin();
       allow delete: if isAdmin() || isAuctionSeller();
 
@@ -245,7 +348,8 @@ service cloud.firestore {
           auctionDoc(auctionId).data.sellerId != request.auth.uid &&
           request.resource.data.bidAmount >
             auctionDoc(auctionId).data.currentPrice;
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isAdmin() || managesAuctionById(auctionId);
       }
     }
 
@@ -257,7 +361,20 @@ service cloud.firestore {
       allow create, update: if isActiveAccount() &&
         request.auth.uid == userId &&
         request.resource.data.userId == request.auth.uid;
-      allow delete: if isActiveAccount() && request.auth.uid == userId;
+      allow delete: if (isActiveAccount() && request.auth.uid == userId) ||
+        isAdmin() ||
+        managesAuctionById(auctionId);
+    }
+
+    match /user_notifications/{userId}/auctions/{auctionId} {
+      allow read: if isOwner(userId) || isAdmin() || managesAuctionById(auctionId);
+      allow create, update: if isActiveAccount() &&
+        request.auth.uid == userId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.auctionId == auctionId;
+      allow delete: if (isActiveAccount() && request.auth.uid == userId) ||
+        isAdmin() ||
+        managesAuctionById(auctionId);
     }
 
     match /likes/{reactionId} {
@@ -275,6 +392,7 @@ service cloud.firestore {
         createsOwnAuctionReminderNotification() ||
         createsComplaintNotificationForAdmin() ||
         createsSellerAuctionNotification() ||
+        createsAuctionChatNotification() ||
         createsWinnerPaymentNotification();
       allow read: if isAdmin() ||
         (signedIn() && resource.data.receiverId == request.auth.uid);
@@ -282,8 +400,8 @@ service cloud.firestore {
         marksAdminNotificationRead();
       allow delete: if isAdmin() ||
         (isActiveAccount() &&
-          resource.data.receiverId == request.auth.uid &&
-          resource.data.type in ['auction', 'payment']);
+          resource.data.receiverId == request.auth.uid) ||
+        deletesManagedAuctionNotification();
     }
 
     match /chats/{chatId} {

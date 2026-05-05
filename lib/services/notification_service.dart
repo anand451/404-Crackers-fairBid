@@ -18,19 +18,23 @@ class NotificationService {
   }) {
     return _notifications
         .where('receiverId', isEqualTo: receiverId)
-        .orderBy('timestamp', descending: true)
-        .limit(limit)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map(AppNotification.fromDoc).toList());
+        .map((snapshot) {
+      final notifications = snapshot.docs.map(AppNotification.fromDoc).toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return notifications.take(limit).toList();
+    });
   }
 
   Stream<List<AppNotification>> streamAdminNotifications({int limit = 40}) {
     return _notifications
         .where('receiverRole', isEqualTo: 'admin')
-        .orderBy('timestamp', descending: true)
-        .limit(limit)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map(AppNotification.fromDoc).toList());
+        .map((snapshot) {
+      final notifications = snapshot.docs.map(AppNotification.fromDoc).toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return notifications.take(limit).toList();
+    });
   }
 
   Stream<int> streamUserUnreadCount(String receiverId) {
@@ -71,7 +75,9 @@ class NotificationService {
         'message': message,
         'type': type,
         'timestamp': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
         'readStatus': false,
+        'isRead': false,
         if (senderId != null) 'senderId': senderId,
         if (receiverRole != null) 'receiverRole': receiverRole,
         if (complaintId != null) 'complaintId': complaintId,
@@ -90,6 +96,7 @@ class NotificationService {
     try {
       await _notifications.doc(notificationId).set({
         'readStatus': true,
+        'isRead': true,
         'readAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } on FirebaseException catch (error) {
@@ -149,6 +156,7 @@ class NotificationService {
           doc.reference,
           {
             'readStatus': true,
+            'isRead': true,
             'readAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true));

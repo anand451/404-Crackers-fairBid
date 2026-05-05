@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/auction.dart';
+import 'auction_service.dart';
+import 'notification_service.dart';
 
 class AdminRecordItem {
   const AdminRecordItem({
@@ -56,10 +58,14 @@ class AdminDashboardStats {
 }
 
 class AdminService {
-  AdminService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  AdminService({
+    FirebaseFirestore? firestore,
+    NotificationService? notificationService,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _notificationService = notificationService ?? NotificationService();
 
   final FirebaseFirestore _firestore;
+  final NotificationService _notificationService;
 
   Stream<List<Auction>> streamAllAuctions() {
     return _firestore.collection('auctions').snapshots().map((snapshot) {
@@ -132,6 +138,18 @@ class AdminService {
           },
           SetOptions(merge: true));
     });
+
+    if (request.sellerId.isNotEmpty) {
+      await _notificationService.createNotification(
+        receiverId: request.sellerId,
+        senderId: adminId,
+        title: 'Auction approved',
+        message:
+            'Your auction "${request.title}" has been approved and is ready for FairBid.',
+        type: 'auction',
+        auctionId: request.id,
+      );
+    }
   }
 
   Future<void> rejectAuctionRequest({
@@ -147,6 +165,19 @@ class AdminService {
       'rejectionReason': reason,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    if (request.sellerId.isNotEmpty) {
+      await _notificationService.createNotification(
+        receiverId: request.sellerId,
+        senderId: adminId,
+        title: 'Auction rejected',
+        message: reason?.trim().isNotEmpty == true
+            ? 'Your auction "${request.title}" was rejected. Reason: ${reason!.trim()}'
+            : 'Your auction "${request.title}" was rejected by the admin team.',
+        type: 'auction',
+        auctionId: request.id,
+      );
+    }
   }
 
   Future<void> updateAuction(Auction auction) async {
@@ -174,7 +205,10 @@ class AdminService {
   }
 
   Future<void> deleteAuction(String auctionId) async {
-    await _firestore.collection('auctions').doc(auctionId).delete();
+    await AuctionService(
+      firestore: _firestore,
+      notificationService: _notificationService,
+    ).deleteAuctionCascade(auctionId);
   }
 
   Stream<AdminDashboardStats> watchDashboardStats() {

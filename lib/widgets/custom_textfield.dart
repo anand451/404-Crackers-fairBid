@@ -127,6 +127,8 @@ class _CustomTextFieldState extends State<CustomTextField> {
             ),
             cursorColor: const Color(0xFFFFC107),
             decoration: InputDecoration(
+              filled: false,
+              fillColor: Colors.transparent,
               icon: Icon(
                 widget.icon,
                 color: isFocused
@@ -139,10 +141,12 @@ class _CustomTextFieldState extends State<CustomTextField> {
                     ? const Color(0xFFFFE082)
                     : Colors.white.withValues(alpha: 0.68),
               ),
+              floatingLabelStyle: const TextStyle(color: Color(0xFFFFE082)),
               errorStyle: const TextStyle(
                 color: Color(0xFFFFD5D5),
                 fontWeight: FontWeight.w600,
               ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 18),
               border: InputBorder.none,
               suffixIcon: widget.onToggleObscure != null
                   ? IconButton(

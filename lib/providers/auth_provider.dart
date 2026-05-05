@@ -263,9 +263,11 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
-    _notificationSubscription = _notificationService
-        .streamUserNotifications(userId, limit: 20)
-        .listen((notifications) {
+    final stream = isAdmin
+        ? _notificationService.streamAdminNotifications(limit: 20)
+        : _notificationService.streamUserNotifications(userId, limit: 20);
+
+    _notificationSubscription = stream.listen((notifications) {
       if (!_notificationStreamPrimed) {
         _seenNotificationIds.addAll(notifications.map((item) => item.id));
         _notificationStreamPrimed = true;
@@ -274,8 +276,7 @@ class AuthProvider extends ChangeNotifier {
 
       for (final notification in notifications) {
         final isNew = _seenNotificationIds.add(notification.id);
-        final shouldSurface =
-            notification.type != 'auction' && !notification.readStatus && isNew;
+        final shouldSurface = !notification.readStatus && isNew;
         if (!shouldSurface) {
           continue;
         }

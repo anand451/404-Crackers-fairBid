@@ -77,7 +77,7 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
         _selectedStartTime ?? now.add(const Duration(hours: 1)),
       ),
     );
-    if (time == null) {
+    if (time == null || !mounted) {
       return;
     }
 
@@ -98,7 +98,7 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
         builder: (_) => MapPickerScreen(initialPosition: _selectedLocation),
       ),
     );
-    if (location == null) {
+    if (location == null || !mounted) {
       return;
     }
     setState(() {
@@ -202,7 +202,7 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
       key: _formKey,
       child: ListView(
         physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(0, widget.embedded ? 0 : 24, 0, 120),
+        padding: EdgeInsets.fromLTRB(0, widget.embedded ? 18 : 24, 0, 120),
         children: [
           _AnimatedFormSection(
             index: 0,
@@ -408,7 +408,13 @@ class _CreateAuctionScreenState extends State<CreateAuctionScreen> {
     );
 
     if (widget.embedded) {
-      return content;
+      return SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: content,
+        ),
+      );
     }
 
     return Scaffold(

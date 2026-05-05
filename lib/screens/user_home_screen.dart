@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -10,10 +11,12 @@ import '../providers/app_theme_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/local_notification_service.dart';
 import '../services/user_home_service.dart';
+import '../utils/auth_validators.dart';
 import 'auction_chat_threads_screen.dart';
 import 'auction_detail_screen.dart';
 import 'create_auction_screen.dart';
 import 'live_auction_screen.dart';
+import 'map_picker_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
 
@@ -27,19 +30,6 @@ class UserHomeScreen extends StatefulWidget {
 class _UserHomeScreenState extends State<UserHomeScreen> {
   final UserHomeService _service = UserHomeService();
   int _selectedIndex = 0;
-
-  late final List<Widget> _tabs = [
-    _HomeTab(service: _service),
-    _UpcomingAuctionsTab(service: _service),
-    CreateAuctionScreen(
-      embedded: true,
-      onCreated: () => setState(() {
-        _selectedIndex = 1;
-      }),
-    ),
-    _MyAuctionsTab(service: _service),
-    ProfileScreen(),
-  ];
 
   void _selectTab(int index) {
     if (_selectedIndex == index) {
@@ -74,7 +64,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         child: IndexedStack(
           key: ValueKey(_selectedIndex),
           index: _selectedIndex,
-          children: _tabs,
+          children: [
+            _buildTab(0),
+            _buildTab(1),
+            _buildTab(2),
+            _buildTab(3),
+            _buildTab(4),
+          ],
         ),
       ),
       bottomNavigationBar: Padding(
@@ -123,6 +119,28 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildTab(int index) {
+    switch (index) {
+      case 0:
+        return _HomeTab(service: _service);
+      case 1:
+        return _UpcomingAuctionsTab(service: _service);
+      case 2:
+        return CreateAuctionScreen(
+          embedded: true,
+          onCreated: () => setState(() {
+            _selectedIndex = 1;
+          }),
+        );
+      case 3:
+        return _MyAuctionsTab(service: _service);
+      case 4:
+        return ProfileScreen();
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }
 
@@ -799,11 +817,21 @@ class _OwnerAuctionTile extends StatelessWidget {
     if (confirmed != true || !context.mounted) {
       return;
     }
-    await service.deleteMyAuctionRequest(auction.id);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Auction deleted.')),
-      );
+    try {
+      await service.deleteMyAuction(item);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Auction deleted.')),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not delete this auction right now.'),
+          ),
+        );
+      }
     }
   }
 
@@ -811,72 +839,336 @@ class _OwnerAuctionTile extends StatelessWidget {
     if (!item.canEdit) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Only pending auction requests can be edited.'),
+          content: Text(
+            'Live, paused, sold, or ended auctions cannot be edited.',
+          ),
         ),
       );
       return;
     }
 
     final titleController = TextEditingController(text: auction.title);
+    final descriptionController = TextEditingController(text: auction.description);
     final priceController =
         TextEditingController(text: auction.reservePrice.toStringAsFixed(0));
+    final durationController =
+        TextEditingController(text: auction.durationHours.toString());
+    final upiController = TextEditingController(text: auction.upiId);
     final formKey = GlobalKey<FormState>();
+    var selectedCategory = auction.category;
+    var selectedStartTime = auction.startTime;
+    LatLng? selectedLocation = auction.hasLocation
+        ? LatLng(auction.latitude!, auction.longitude!)
+        : null;
 
-    await showDialog<void>(
+    final updatedAuction = await showModalBottomSheet<Auction>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit auction'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: titleController,
-                decoration: const InputDecoration(labelText: 'Title'),
-                validator: (value) =>
-                    value?.trim().isEmpty == true ? 'Title required' : null,
-              ),
-              TextFormField(
-                controller: priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Starting price'),
-                validator: (value) => double.tryParse(value ?? '') == null
-                    ? 'Invalid price'
-                    : null,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) {
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> pickDateTime() async {
+              final now = DateTime.now();
+              final pickedDate = await showDatePicker(
+                context: context,
+                initialDate: selectedStartTime.isAfter(now)
+                    ? selectedStartTime
+                    : now.add(const Duration(hours: 1)),
+                firstDate: now,
+                lastDate: now.add(const Duration(days: 365)),
+              );
+              if (pickedDate == null || !context.mounted) {
                 return;
               }
-              await service.updateMyAuctionRequest(
-                auction.copyWith(
-                  title: titleController.text.trim(),
-                  reservePrice: double.parse(priceController.text),
-                  currentPrice: double.parse(priceController.text),
+              final pickedTime = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay.fromDateTime(selectedStartTime),
+              );
+              if (pickedTime == null || !context.mounted) {
+                return;
+              }
+              setModalState(() {
+                selectedStartTime = DateTime(
+                  pickedDate.year,
+                  pickedDate.month,
+                  pickedDate.day,
+                  pickedTime.hour,
+                  pickedTime.minute,
+                );
+              });
+            }
+
+            Future<void> pickLocation() async {
+              final picked = await Navigator.of(context).push<LatLng>(
+                MaterialPageRoute(
+                  builder: (_) => MapPickerScreen(
+                    initialPosition: selectedLocation,
+                  ),
                 ),
               );
-              if (context.mounted) {
-                Navigator.of(context).pop();
+              if (picked == null || !context.mounted) {
+                return;
               }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+              setModalState(() {
+                selectedLocation = picked;
+              });
+            }
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                12,
+                20,
+                MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Edit auction',
+                        style: GoogleFonts.sora(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Saving changes will send this auction back for admin approval.',
+                        style: GoogleFonts.manrope(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 18),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedCategory,
+                        decoration: const InputDecoration(
+                          labelText: 'Category',
+                          prefixIcon: Icon(Icons.category_outlined),
+                        ),
+                        items: const [
+                          'Vehicle',
+                          'Electronics',
+                          'Jewellery',
+                          'Land',
+                          'Furniture',
+                          'Other',
+                        ]
+                            .map(
+                              (category) => DropdownMenuItem(
+                                value: category,
+                                child: Text(category),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          setModalState(() {
+                            selectedCategory = value;
+                            if (selectedCategory != 'Land') {
+                              selectedLocation = null;
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: titleController,
+                        decoration: const InputDecoration(
+                          labelText: 'Auction Title',
+                          prefixIcon: Icon(Icons.title),
+                        ),
+                        validator: (value) => value?.trim().isEmpty == true
+                            ? 'Title required'
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: descriptionController,
+                        minLines: 3,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          labelText: 'Description',
+                          prefixIcon: Icon(Icons.description_outlined),
+                          alignLabelWithHint: true,
+                        ),
+                        validator: (value) => value?.trim().isEmpty == true
+                            ? 'Description required'
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                      OutlinedButton.icon(
+                        onPressed: pickDateTime,
+                        icon: const Icon(Icons.calendar_month_rounded),
+                        label: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            DateFormat('dd MMM yyyy, hh:mm a')
+                                .format(selectedStartTime),
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(54),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: durationController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Auction Duration (hours)',
+                          prefixIcon: Icon(Icons.timer_outlined),
+                        ),
+                        validator: (value) {
+                          final hours = int.tryParse(value ?? '');
+                          if (hours == null || hours <= 0) {
+                            return 'Valid duration required';
+                          }
+                          return null;
+                        },
+                      ),
+                      if (selectedCategory == 'Land') ...[
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          onPressed: pickLocation,
+                          icon: const Icon(Icons.map_outlined),
+                          label: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              selectedLocation == null
+                                  ? 'Select land location'
+                                  : '${selectedLocation!.latitude.toStringAsFixed(5)}, ${selectedLocation!.longitude.toStringAsFixed(5)}',
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(54),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: upiController,
+                        decoration: const InputDecoration(
+                          labelText: 'Seller UPI ID',
+                          prefixIcon: Icon(
+                            Icons.account_balance_wallet_outlined,
+                          ),
+                        ),
+                        validator: AuthValidators.upiId,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: priceController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Starting Price',
+                          prefixIcon: Icon(Icons.currency_rupee_rounded),
+                        ),
+                        validator: (value) {
+                          final price = double.tryParse(value ?? '');
+                          if (price == null || price <= 0) {
+                            return 'Starting price must be greater than 0';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: () {
+                            if (!formKey.currentState!.validate()) {
+                              return;
+                            }
+                            if (selectedCategory == 'Land' &&
+                                selectedLocation == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Please select land location on the map.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+                            Navigator.of(sheetContext).pop(
+                              auction.copyWith(
+                                title: titleController.text.trim(),
+                                description: descriptionController.text.trim(),
+                                category: selectedCategory,
+                                startTime: selectedStartTime,
+                                endTime: selectedStartTime.add(
+                                  Duration(
+                                    hours: int.parse(durationController.text),
+                                  ),
+                                ),
+                                durationHours:
+                                    int.parse(durationController.text),
+                                reservePrice:
+                                    double.parse(priceController.text),
+                                currentPrice:
+                                    double.parse(priceController.text),
+                                upiId: upiController.text.trim(),
+                                latitude: selectedCategory == 'Land'
+                                    ? selectedLocation?.latitude
+                                    : null,
+                                longitude: selectedCategory == 'Land'
+                                    ? selectedLocation?.longitude
+                                    : null,
+                              ),
+                            );
+                          },
+                          child: const Text('Save and resubmit'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
 
     titleController.dispose();
+    descriptionController.dispose();
     priceController.dispose();
+    durationController.dispose();
+    upiController.dispose();
+
+    if (updatedAuction == null || !context.mounted) {
+      return;
+    }
+
+    try {
+      await service.resubmitAuctionForApproval(
+        item: item,
+        updatedAuction: updatedAuction,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Auction updated and sent back for admin approval.'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not update this auction right now.'),
+          ),
+        );
+      }
+    }
   }
 
   @override

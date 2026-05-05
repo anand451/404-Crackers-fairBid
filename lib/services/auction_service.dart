@@ -198,6 +198,7 @@ class AuctionService {
       }
 
       transaction.set(bidRef, {
+        'auctionId': auctionId,
         'userId': bidderId,
         'userName': bidderName,
         'bidAmount': amount,
@@ -252,12 +253,18 @@ class AuctionService {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    await _notifyInterestedUsersForAuctionStart(auction.copyWith(
-      startTime: now,
-      endTime: now.add(Duration(seconds: remainingSeconds)),
-      state: 'LIVE',
-      remainingSeconds: remainingSeconds,
-    ));
+    try {
+      await _notifyInterestedUsersForAuctionStart(auction.copyWith(
+        startTime: now,
+        endTime: now.add(Duration(seconds: remainingSeconds)),
+        state: 'LIVE',
+        remainingSeconds: remainingSeconds,
+      ));
+    } on FirebaseException catch (error) {
+      _log(
+        'Auction started, but reminder fan-out was skipped [${error.code}] ${error.message}',
+      );
+    }
   }
 
   Future<void> pauseAuction({
@@ -525,6 +532,40 @@ class AuctionService {
         );
   }
 
+  Future<void> deleteAuctionCascade(String auctionId) async {
+    final auctionRef = _auctions.doc(auctionId);
+    final requestRef = _auctionRequests.doc(auctionId);
+
+    final auctionSnapshot = await auctionRef.get();
+    final requestSnapshot = await requestRef.get();
+    final bidSnapshot = await auctionRef.collection('bids').get();
+    final watcherSnapshot = await _watchersForAuction(auctionId).get();
+    final notificationSnapshot =
+        await _firestore.collection('notifications').where('auctionId', isEqualTo: auctionId).get();
+    final paymentSnapshot =
+        await _payments.where('auctionId', isEqualTo: auctionId).get();
+    final reminderSnapshot = await _firestore
+        .collectionGroup('auctions')
+        .where('auctionId', isEqualTo: auctionId)
+        .get();
+
+    final reminderDocs = reminderSnapshot.docs.where(
+      (doc) => doc.reference.path.startsWith('user_notifications/'),
+    );
+
+    final refs = <DocumentReference<Map<String, dynamic>>>[
+      if (requestSnapshot.exists) requestRef,
+      if (auctionSnapshot.exists) auctionRef,
+      ...bidSnapshot.docs.map((doc) => doc.reference),
+      ...watcherSnapshot.docs.map((doc) => doc.reference),
+      ...notificationSnapshot.docs.map((doc) => doc.reference),
+      ...paymentSnapshot.docs.map((doc) => doc.reference),
+      ...reminderDocs.map((doc) => doc.reference),
+    ];
+
+    await _deleteRefsInChunks(refs);
+  }
+
   Future<void> syncBidPrice({
     required String auctionId,
     required double amount,
@@ -549,27 +590,50 @@ class AuctionService {
   }
 
   Future<void> _notifyInterestedUsersForAuctionStart(Auction auction) async {
-    final interestedUsers = await _firestore
-        .collection('users')
-        .where('reminderAuctions', arrayContains: auction.id)
-        .get();
-
     final futures = <Future<dynamic>>[];
-    for (final userDoc in interestedUsers.docs) {
-      if (userDoc.id == auction.sellerId) {
-        continue;
+
+    try {
+      final registrations = await _firestore
+          .collectionGroup('auctions')
+          .where('auctionId', isEqualTo: auction.id)
+          .get();
+
+      final deliveredTo = <String>{};
+      final reminderRefs = <DocumentReference<Map<String, dynamic>>>[];
+
+      for (final registration in registrations.docs) {
+        if (!registration.reference.path.startsWith('user_notifications/')) {
+          continue;
+        }
+        final userId = (registration.data()['userId'] as String?) ??
+            registration.reference.parent.parent?.id ??
+            '';
+        if (userId.isEmpty ||
+            userId == auction.sellerId ||
+            !deliveredTo.add(userId)) {
+          continue;
+        }
+        reminderRefs.add(registration.reference);
+        futures.add(
+          _notificationService.createNotification(
+            receiverId: userId,
+            senderId: auction.sellerId,
+            title: 'Auction started',
+            message: '${auction.title} is live now. Join the bidding.',
+            type: 'auction',
+            auctionId: auction.id,
+            startsAt: auction.startTime,
+          ),
+        );
       }
-      futures.add(
-        _notificationService.createNotification(
-          receiverId: userDoc.id,
-          senderId: auction.sellerId,
-          title: 'Auction started',
-          message: '${auction.title} is live now. Join the bidding.',
-          type: 'auction',
-          auctionId: auction.id,
-        ),
+
+      futures.add(_markReminderRegistrationsTriggered(reminderRefs));
+    } on FirebaseException catch (error) {
+      _log(
+        'Interested-user auction notifications skipped [${error.code}] ${error.message}',
       );
     }
+
     futures.add(
       _notificationService.createNotification(
         receiverId: auction.sellerId,
@@ -578,10 +642,52 @@ class AuctionService {
         message: 'Your auction ${auction.title} has started successfully.',
         type: 'auction',
         auctionId: auction.id,
+        startsAt: auction.startTime,
       ),
     );
 
     await Future.wait(futures);
+  }
+
+  Future<void> _markReminderRegistrationsTriggered(
+    List<DocumentReference<Map<String, dynamic>>> refs,
+  ) async {
+    if (refs.isEmpty) {
+      return;
+    }
+
+    for (var index = 0; index < refs.length; index += 400) {
+      final batch = _firestore.batch();
+      final chunk = refs.skip(index).take(400);
+      for (final ref in chunk) {
+        batch.set(
+          ref,
+          {
+            'triggeredAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> _deleteRefsInChunks(
+    List<DocumentReference<Map<String, dynamic>>> refs,
+  ) async {
+    if (refs.isEmpty) {
+      return;
+    }
+
+    for (var index = 0; index < refs.length; index += 400) {
+      final batch = _firestore.batch();
+      final chunk = refs.skip(index).take(400);
+      for (final ref in chunk) {
+        batch.delete(ref);
+      }
+      await batch.commit();
+    }
   }
 
   static int _marketplaceSort(Auction a, Auction b) {

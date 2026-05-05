@@ -186,6 +186,9 @@ class _LiveAuctionScreenState extends State<LiveAuctionScreen> {
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,

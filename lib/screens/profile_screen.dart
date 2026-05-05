@@ -170,7 +170,7 @@ class ProfileScreen extends StatelessWidget {
                 lastDate:
                     DateTime.now().subtract(const Duration(days: 365 * 18)),
               );
-              if (picked == null) {
+              if (picked == null || !context.mounted) {
                 return;
               }
               setModalState(() {
@@ -304,119 +304,116 @@ class ProfileScreen extends StatelessWidget {
       return;
     }
     final formKey = GlobalKey<FormState>();
-    var isSubmitting = false;
 
-    await showModalBottomSheet<void>(
+    final complaintMessage = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                12,
-                20,
-                MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Raise a complaint',
-                      style: GoogleFonts.sora(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Describe the issue clearly so the admin can respond faster.',
-                      style: GoogleFonts.manrope(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: controller,
-                      minLines: 5,
-                      maxLines: 8,
-                      validator: (value) {
-                        if ((value ?? '').trim().isEmpty) {
-                          return 'Complaint message is required';
-                        }
-                        if ((value ?? '').trim().length < 10) {
-                          return 'Please provide a little more detail';
-                        }
-                        return null;
-                      },
-                      decoration: const InputDecoration(
-                        hintText: 'Write your complaint here...',
-                        alignLabelWithHint: true,
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: FilledButton.tonal(
-                        onPressed: isSubmitting
-                            ? null
-                            : () async {
-                                if (!formKey.currentState!.validate()) {
-                                  return;
-                                }
-                                setModalState(() {
-                                  isSubmitting = true;
-                                });
-                                try {
-                                  await _complaintService.submitComplaint(
-                                    user: user,
-                                    message: controller.text,
-                                  );
-                                  if (!context.mounted) {
-                                    return;
-                                  }
-                                  Navigator.of(context).pop();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      behavior: SnackBarBehavior.floating,
-                                      content: Text(
-                                        'Complaint submitted. The admin has been notified.',
-                                      ),
-                                    ),
-                                  );
-                                } catch (error) {
-                                  setModalState(() {
-                                    isSubmitting = false;
-                                  });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      behavior: SnackBarBehavior.floating,
-                                      backgroundColor: const Color(0xFFB3261E),
-                                      content: Text(error.toString()),
-                                    ),
-                                  );
-                                }
-                              },
-                        child: Text(
-                          isSubmitting ? 'Submitting...' : 'Submit complaint',
-                        ),
-                      ),
-                    ),
-                  ],
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            12,
+            20,
+            MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Raise a complaint',
+                  style: GoogleFonts.sora(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 10),
+                Text(
+                  'Describe the issue clearly so the admin can respond faster.',
+                  style: GoogleFonts.manrope(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: controller,
+                  minLines: 5,
+                  maxLines: 8,
+                  validator: (value) {
+                    if ((value ?? '').trim().isEmpty) {
+                      return 'Complaint message is required';
+                    }
+                    if ((value ?? '').trim().length < 10) {
+                      return 'Please provide a little more detail';
+                    }
+                    return null;
+                  },
+                  decoration: const InputDecoration(
+                    hintText: 'Write your complaint here...',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.tonal(
+                    onPressed: () {
+                      if (!formKey.currentState!.validate()) {
+                        return;
+                      }
+                      Navigator.of(
+                        sheetContext,
+                      ).pop(controller.text.trim());
+                    },
+                    child: const Text(
+                      'Submit complaint',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
 
     controller.dispose();
+
+    if (complaintMessage == null || !context.mounted) {
+      return;
+    }
+
+    try {
+      await _complaintService.submitComplaint(
+        user: user,
+        message: complaintMessage,
+      );
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'Complaint submitted. The admin has been notified.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFB3261E),
+          content: Text(error.toString()),
+        ),
+      );
+    }
   }
 }
 

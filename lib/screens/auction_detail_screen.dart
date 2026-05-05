@@ -74,7 +74,11 @@ class _AuctionDetailScreenState extends State<AuctionDetailScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reminder saved for this auction.')),
+        const SnackBar(
+          content: Text(
+            'Reminder saved. Your phone will notify you when this timer ends.',
+          ),
+        ),
       );
     } catch (_) {
       if (!mounted) {

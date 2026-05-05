@@ -187,16 +187,16 @@ class _AuthScreenState extends State<AuthScreen> {
     final controller = TextEditingController(text: _loginEmailController.text);
     final formKey = GlobalKey<FormState>();
 
-    await showModalBottomSheet<void>(
+    final resetEmail = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
+      builder: (sheetContext) {
         return Padding(
           padding: EdgeInsets.only(
             left: 20,
             right: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 20,
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(28),
@@ -243,41 +243,15 @@ class _AuthScreenState extends State<AuthScreen> {
                         validator: AuthValidators.email,
                       ),
                       const SizedBox(height: 20),
-                      Consumer<AuthProvider>(
-                        builder: (sheetContext, authProvider, child) {
-                          return _GlowButton(
-                            label: authProvider.isResetPasswordLoading
-                                ? 'Sending...'
-                                : 'Send reset link',
-                            onPressed: authProvider.isResetPasswordLoading
-                                ? null
-                                : () async {
-                                    if (!formKey.currentState!.validate()) {
-                                      return;
-                                    }
-                                    final provider =
-                                        context.read<AuthProvider>();
-                                    final success =
-                                        await provider.sendPasswordReset(
-                                      controller.text.trim(),
-                                    );
-                                    final errorMessage = provider.authError;
-                                    if (!sheetContext.mounted) {
-                                      return;
-                                    }
-                                    Navigator.of(sheetContext).pop();
-                                    if (!mounted) {
-                                      return;
-                                    }
-                                    _showSnackBar(
-                                      success
-                                          ? 'Reset link sent. Check your inbox.'
-                                          : errorMessage ??
-                                              'Could not send reset link.',
-                                      isError: !success,
-                                    );
-                                  },
-                          );
+                      _GlowButton(
+                        label: 'Send reset link',
+                        onPressed: () {
+                          if (!formKey.currentState!.validate()) {
+                            return;
+                          }
+                          Navigator.of(
+                            sheetContext,
+                          ).pop(controller.text.trim());
                         },
                       ),
                     ],
@@ -291,6 +265,25 @@ class _AuthScreenState extends State<AuthScreen> {
     );
 
     controller.dispose();
+
+    if (resetEmail == null || !mounted) {
+      return;
+    }
+
+    final provider = context.read<AuthProvider>();
+    final success = await provider.sendPasswordReset(resetEmail);
+    final errorMessage = provider.authError;
+
+    if (!mounted) {
+      return;
+    }
+
+    _showSnackBar(
+      success
+          ? 'Reset link sent. Check your inbox.'
+          : errorMessage ?? 'Could not send reset link.',
+      isError: !success,
+    );
   }
 
   void _showSnackBar(String message, {required bool isError}) {

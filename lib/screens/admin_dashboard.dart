@@ -12,6 +12,7 @@ class AdminDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     final adminService = AdminService();
 
     return StreamBuilder<AdminDashboardStats>(
@@ -97,7 +98,7 @@ class AdminDashboard extends StatelessWidget {
                     Text(
                       'Marketplace Pulse',
                       style: GoogleFonts.sora(
-                        color: Colors.white,
+                        color: palette.primaryText,
                         fontWeight: FontWeight.w700,
                         fontSize: 18,
                       ),
@@ -115,7 +116,7 @@ class AdminDashboard extends StatelessWidget {
                     Text(
                       'Recent Complaints',
                       style: GoogleFonts.sora(
-                        color: Colors.white,
+                        color: palette.primaryText,
                         fontWeight: FontWeight.w700,
                         fontSize: 18,
                       ),
@@ -157,7 +158,7 @@ class AdminDashboard extends StatelessWidget {
                     Text(
                       'Payment History',
                       style: GoogleFonts.sora(
-                        color: Colors.white,
+                        color: palette.primaryText,
                         fontWeight: FontWeight.w700,
                         fontSize: 18,
                       ),
@@ -220,6 +221,7 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     return AdminGlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,7 +239,7 @@ class _MetricCard extends StatelessWidget {
               return Text(
                 displayValue,
                 style: GoogleFonts.sora(
-                  color: Colors.white,
+                  color: palette.primaryText,
                   fontWeight: FontWeight.w800,
                   fontSize: 26,
                 ),
@@ -248,7 +250,7 @@ class _MetricCard extends StatelessWidget {
           Text(
             metric.label,
             style: GoogleFonts.manrope(
-              color: Colors.white.withValues(alpha: 0.72),
+              color: palette.secondaryText,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -262,9 +264,13 @@ class _PulseBars extends StatelessWidget {
   const _PulseBars({required this.stats});
 
   final AdminDashboardStats stats;
+  static const double _chartHeight = 164;
+  static const double _labelHeight = 34;
+  static const double _minBarHeight = 30;
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     final values = [
       ('Users', stats.totalUsers.toDouble(), const Color(0xFF67E8F9)),
       ('Auctions', stats.totalAuctions.toDouble(), const Color(0xFFFFD54F)),
@@ -276,51 +282,84 @@ class _PulseBars extends StatelessWidget {
       (current, item) => math.max(current, item.$2),
     );
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: values.map((item) {
-        final heightFactor = (item.$2 / maxValue).clamp(0.12, 1.0);
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Column(
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 450),
-                  curve: Curves.easeOutCubic,
-                  height: 36 + (110 * heightFactor),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        item.$3.withValues(alpha: 0.28),
-                        item.$3,
+    return SizedBox(
+      height: _chartHeight + _labelHeight + 18,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: values.map((item) {
+          final heightFactor = (item.$2 / maxValue).clamp(0.0, 1.0);
+          final barHeight =
+              _minBarHeight + ((_chartHeight - _minBarHeight) * heightFactor);
+
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Stack(
+                      alignment: Alignment.bottomCenter,
+                      children: [
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            height: 1,
+                            color: palette.panelBorder.withValues(alpha: 0.9),
+                          ),
+                        ),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 450),
+                          curve: Curves.easeOutCubic,
+                          height: barHeight,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                item.$3.withValues(alpha: 0.28),
+                                item.$3,
+                              ],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: item.$3.withValues(alpha: 0.22),
+                                blurRadius: 20,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: item.$3.withValues(alpha: 0.22),
-                        blurRadius: 20,
-                        spreadRadius: 1,
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: _labelHeight,
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          item.$1,
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.manrope(
+                            color: palette.secondaryText,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  item.$1,
-                  style: GoogleFonts.manrope(
-                    color: Colors.white.withValues(alpha: 0.78),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        );
-      }).toList(),
+          );
+        }).toList(),
+      ),
     );
   }
 }
@@ -340,11 +379,12 @@ class _TimelineTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: palette.tileBackground,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
@@ -359,7 +399,7 @@ class _TimelineTile extends StatelessWidget {
                 Text(
                   title,
                   style: GoogleFonts.manrope(
-                    color: Colors.white,
+                    color: palette.primaryText,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -367,7 +407,7 @@ class _TimelineTile extends StatelessWidget {
                 Text(
                   subtitle,
                   style: GoogleFonts.manrope(
-                    color: Colors.white.withValues(alpha: 0.72),
+                    color: palette.secondaryText,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -378,7 +418,7 @@ class _TimelineTile extends StatelessWidget {
           Text(
             trailing,
             style: GoogleFonts.manrope(
-              color: Colors.white.withValues(alpha: 0.56),
+              color: palette.tertiaryText,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -395,12 +435,13 @@ class _SectionEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Text(
         label,
         style: GoogleFonts.manrope(
-          color: Colors.white.withValues(alpha: 0.72),
+          color: palette.secondaryText,
           fontWeight: FontWeight.w700,
         ),
       ),

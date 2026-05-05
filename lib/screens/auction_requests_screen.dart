@@ -47,14 +47,15 @@ class _AuctionRequestsScreenState extends State<AuctionRequestsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
+        final palette = AdminUiPalette.of(context);
         return AlertDialog(
-          backgroundColor: const Color(0xFF0E213E),
+          backgroundColor: palette.dialogBackground,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           title: Text(
             'Reject request?',
             style: GoogleFonts.sora(
-              color: Colors.white,
+              color: palette.primaryText,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -64,17 +65,17 @@ class _AuctionRequestsScreenState extends State<AuctionRequestsScreen> {
               Text(
                 'You can optionally add a short note for why this request is being rejected.',
                 style: GoogleFonts.manrope(
-                  color: Colors.white.withValues(alpha: 0.74),
+                  color: palette.secondaryText,
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: reasonController,
                 maxLines: 3,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
+                style: TextStyle(color: palette.primaryText),
+                decoration: InputDecoration(
                   labelText: 'Reason (optional)',
-                  labelStyle: TextStyle(color: Colors.white70),
+                  labelStyle: TextStyle(color: palette.secondaryText),
                 ),
               ),
             ],
@@ -122,21 +123,22 @@ class _AuctionRequestsScreenState extends State<AuctionRequestsScreen> {
     return showDialog<bool>(
       context: context,
       builder: (context) {
+        final palette = AdminUiPalette.of(context);
         return AlertDialog(
-          backgroundColor: const Color(0xFF0E213E),
+          backgroundColor: palette.dialogBackground,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           title: Text(
             title,
             style: GoogleFonts.sora(
-              color: Colors.white,
+              color: palette.primaryText,
               fontWeight: FontWeight.w700,
             ),
           ),
           content: Text(
             description,
             style: GoogleFonts.manrope(
-              color: Colors.white.withValues(alpha: 0.74),
+              color: palette.secondaryText,
             ),
           ),
           actions: [
@@ -194,6 +196,7 @@ class _AuctionRequestsScreenState extends State<AuctionRequestsScreen> {
           itemCount: requests.length,
           separatorBuilder: (_, __) => const SizedBox(height: 16),
           itemBuilder: (context, index) {
+            final palette = AdminUiPalette.of(context);
             final request = requests[index];
 
             return AdminGlassCard(
@@ -206,7 +209,7 @@ class _AuctionRequestsScreenState extends State<AuctionRequestsScreen> {
                         child: Text(
                           request.title,
                           style: GoogleFonts.sora(
-                            color: Colors.white,
+                            color: palette.primaryText,
                             fontWeight: FontWeight.w700,
                             fontSize: 19,
                           ),
@@ -221,7 +224,7 @@ class _AuctionRequestsScreenState extends State<AuctionRequestsScreen> {
                         ? 'No description provided.'
                         : request.description,
                     style: GoogleFonts.manrope(
-                      color: Colors.white.withValues(alpha: 0.72),
+                      color: palette.secondaryText,
                       height: 1.45,
                     ),
                   ),
@@ -270,8 +273,12 @@ class _AuctionRequestsScreenState extends State<AuctionRequestsScreen> {
                           onPressed: () => _rejectRequest(request),
                           style: FilledButton.styleFrom(
                             backgroundColor:
-                                const Color(0xFFEF4444).withValues(alpha: 0.18),
-                            foregroundColor: const Color(0xFFFFB4AB),
+                                const Color(0xFFEF4444).withValues(
+                                  alpha: palette.isDark ? 0.18 : 0.12,
+                                ),
+                            foregroundColor: palette.isDark
+                                ? const Color(0xFFFFB4AB)
+                                : const Color(0xFFB42318),
                           ),
                           icon: const Icon(Icons.close_rounded),
                           label: const Text('Reject'),

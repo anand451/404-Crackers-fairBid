@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 import '../services/user_management_service.dart';
+import 'manage_auctions_screen.dart';
 
 class AdminUsersScreen extends StatelessWidget {
   AdminUsersScreen({super.key, UserManagementService? userManagementService})
@@ -60,7 +61,7 @@ class AdminUsersScreen extends StatelessWidget {
       return;
     }
 
-    await showDialog<void>(
+    final message = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -83,26 +84,12 @@ class AdminUsersScreen extends StatelessWidget {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () async {
-                if (controller.text.trim().isEmpty) {
+              onPressed: () {
+                final trimmed = controller.text.trim();
+                if (trimmed.isEmpty) {
                   return;
                 }
-                await _userManagementService.sendNotificationToUser(
-                  receiverId: user.uid,
-                  senderId: adminId,
-                  title: 'FairBid admin message',
-                  message: controller.text.trim(),
-                );
-                if (!dialogContext.mounted) {
-                  return;
-                }
-                Navigator.of(dialogContext).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    behavior: SnackBarBehavior.floating,
-                    content: Text('Notification sent to user.'),
-                  ),
-                );
+                Navigator.of(dialogContext).pop(trimmed);
               },
               child: const Text('Send'),
             ),
@@ -112,6 +99,39 @@ class AdminUsersScreen extends StatelessWidget {
     );
 
     controller.dispose();
+
+    if (message == null || !context.mounted) {
+      return;
+    }
+
+    try {
+      await _userManagementService.sendNotificationToUser(
+        receiverId: user.uid,
+        senderId: adminId,
+        title: 'FairBid admin message',
+        message: message,
+      );
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Notification sent to user.'),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Color(0xFFB3261E),
+          content: Text('Could not send notification right now.'),
+        ),
+      );
+    }
   }
 
   Future<void> _toggleUserStatus(BuildContext context, UserModel user) async {
@@ -163,6 +183,7 @@ class _UserAdminCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     final statusColor =
         user.isBlocked ? const Color(0xFFFB7185) : const Color(0xFF34D399);
 
@@ -171,8 +192,8 @@ class _UserAdminCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        color: Colors.white.withValues(alpha: 0.10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        color: palette.panelBackground,
+        border: Border.all(color: palette.panelBorder),
       ),
       child: Column(
         children: [
@@ -196,7 +217,7 @@ class _UserAdminCard extends StatelessWidget {
                     Text(
                       user.fullName,
                       style: GoogleFonts.sora(
-                        color: Colors.white,
+                        color: palette.primaryText,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                       ),
@@ -205,7 +226,7 @@ class _UserAdminCard extends StatelessWidget {
                     Text(
                       user.email,
                       style: GoogleFonts.manrope(
-                        color: Colors.white.withValues(alpha: 0.72),
+                        color: palette.secondaryText,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -239,9 +260,12 @@ class _UserAdminCard extends StatelessWidget {
                   icon: const Icon(Icons.notifications_active_outlined),
                   label: const Text('Notify'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side:
-                        BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+                    foregroundColor: palette.primaryText,
+                    side: BorderSide(
+                      color: palette.isDark
+                          ? Colors.white.withValues(alpha: 0.22)
+                          : palette.panelBorder,
+                    ),
                   ),
                 ),
               ),
@@ -292,6 +316,7 @@ class _AdminUsersStateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -304,7 +329,7 @@ class _AdminUsersStateCard extends StatelessWidget {
               message,
               textAlign: TextAlign.center,
               style: GoogleFonts.manrope(
-                color: Colors.white,
+                color: palette.primaryText,
                 fontWeight: FontWeight.w700,
               ),
             ),

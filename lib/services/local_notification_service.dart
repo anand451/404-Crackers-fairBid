@@ -21,7 +21,7 @@ class LocalNotificationService {
     tz_data.initializeTimeZones();
 
     const androidSettings =
-        AndroidInitializationSettings('@mipmap/launcher_icon');
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -64,8 +64,8 @@ class LocalNotificationService {
 
     await _plugin.zonedSchedule(
       id: id,
-      title: 'Auction starting now',
-      body: title,
+      title: 'Auction timer finished',
+      body: '$title is starting now.',
       scheduledDate: tz.TZDateTime.from(startsAt, tz.local),
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
@@ -88,8 +88,8 @@ class LocalNotificationService {
     await initialize();
     await _plugin.show(
       id: id,
-      title: 'Auction starting now',
-      body: title,
+      title: 'Auction timer finished',
+      body: '$title is starting now.',
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           'fairbid_auction_start',

@@ -84,14 +84,15 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
+        final palette = AdminUiPalette.of(dialogContext);
         return AlertDialog(
-          backgroundColor: const Color(0xFF0E213E),
+          backgroundColor: palette.dialogBackground,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           title: Text(
             'Edit Auction',
             style: GoogleFonts.sora(
-              color: Colors.white,
+              color: palette.primaryText,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -141,7 +142,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                         contentPadding: EdgeInsets.zero,
                         title: Text(
                           'Ends ${DateFormat('dd MMM yyyy, hh:mm a').format(selectedEndTime)}',
-                          style: GoogleFonts.manrope(color: Colors.white),
+                          style: GoogleFonts.manrope(color: palette.primaryText),
                         ),
                         trailing: TextButton(
                           onPressed: () async {
@@ -160,7 +161,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                               initialTime:
                                   TimeOfDay.fromDateTime(selectedEndTime),
                             );
-                            if (time == null) {
+                            if (time == null || !context.mounted) {
                               return;
                             }
                             setState(() {
@@ -234,6 +235,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final palette = AdminUiPalette.of(context);
         return ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
           child: BackdropFilter(
@@ -241,10 +243,10 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFF0E213E).withValues(alpha: 0.94),
+                color: palette.sheetBackground,
                 borderRadius:
                     const BorderRadius.vertical(top: Radius.circular(30)),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+                border: Border.all(color: palette.panelBorder),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -253,7 +255,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                   Text(
                     'Comments',
                     style: GoogleFonts.sora(
-                      color: Colors.white,
+                      color: palette.primaryText,
                       fontWeight: FontWeight.w700,
                       fontSize: 22,
                     ),
@@ -263,7 +265,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                     Text(
                       'No user comments have been attached to this auction yet.',
                       style: GoogleFonts.manrope(
-                        color: Colors.white.withValues(alpha: 0.72),
+                        color: palette.secondaryText,
                       ),
                     )
                   else
@@ -276,7 +278,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                           return Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.06),
+                              color: palette.tileBackground,
                               borderRadius: BorderRadius.circular(18),
                             ),
                             child: Column(
@@ -285,7 +287,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                                 Text(
                                   comment.userName,
                                   style: GoogleFonts.manrope(
-                                    color: Colors.white,
+                                    color: palette.primaryText,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
@@ -293,7 +295,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                                 Text(
                                   comment.message,
                                   style: GoogleFonts.manrope(
-                                    color: Colors.white.withValues(alpha: 0.78),
+                                    color: palette.secondaryText,
                                   ),
                                 ),
                               ],
@@ -322,21 +324,22 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
     return showDialog<bool>(
       context: context,
       builder: (context) {
+        final palette = AdminUiPalette.of(context);
         return AlertDialog(
-          backgroundColor: const Color(0xFF0E213E),
+          backgroundColor: palette.dialogBackground,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           title: Text(
             title,
             style: GoogleFonts.sora(
-              color: Colors.white,
+              color: palette.primaryText,
               fontWeight: FontWeight.w700,
             ),
           ),
           content: Text(
             description,
             style: GoogleFonts.manrope(
-              color: Colors.white.withValues(alpha: 0.74),
+              color: palette.secondaryText,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -396,6 +399,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
           itemCount: auctions.length,
           separatorBuilder: (_, __) => const SizedBox(height: 16),
           itemBuilder: (context, index) {
+            final palette = AdminUiPalette.of(context);
             final auction = auctions[index];
             return AdminGlassCard(
               child: Column(
@@ -411,7 +415,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                             Text(
                               auction.title,
                               style: GoogleFonts.sora(
-                                color: Colors.white,
+                                color: palette.primaryText,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 19,
                               ),
@@ -422,7 +426,7 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                                   ? 'No description provided.'
                                   : auction.description,
                               style: GoogleFonts.manrope(
-                                color: Colors.white.withValues(alpha: 0.72),
+                                color: palette.secondaryText,
                                 height: 1.4,
                               ),
                             ),
@@ -518,8 +522,12 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                               : () => _confirmStatusChange(auction, 'rejected'),
                           style: FilledButton.styleFrom(
                             backgroundColor:
-                                const Color(0xFFEF4444).withValues(alpha: 0.16),
-                            foregroundColor: const Color(0xFFFFB4AB),
+                                const Color(0xFFEF4444).withValues(
+                                  alpha: palette.isDark ? 0.16 : 0.12,
+                                ),
+                            foregroundColor: palette.isDark
+                                ? const Color(0xFFFFB4AB)
+                                : const Color(0xFFB42318),
                           ),
                           icon: const Icon(Icons.close_rounded),
                           label: const Text('Reject'),
@@ -530,11 +538,15 @@ class _ManageAuctionsScreenState extends State<ManageAuctionsScreen> {
                         onPressed: () => _confirmDelete(auction),
                         style: IconButton.styleFrom(
                           backgroundColor:
-                              const Color(0xFFEF4444).withValues(alpha: 0.16),
+                              const Color(0xFFEF4444).withValues(
+                                alpha: palette.isDark ? 0.16 : 0.12,
+                              ),
                         ),
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.delete_outline_rounded,
-                          color: Color(0xFFFFB4AB),
+                          color: palette.isDark
+                              ? const Color(0xFFFFB4AB)
+                              : const Color(0xFFB42318),
                         ),
                       ),
                     ],
@@ -556,6 +568,7 @@ class AdminGlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(
@@ -563,9 +576,9 @@ class AdminGlassCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.10),
+            color: palette.panelBackground,
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            border: Border.all(color: palette.panelBorder),
           ),
           child: child,
         ),
@@ -581,34 +594,55 @@ class AuctionStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     final (background, foreground) = switch (status) {
       'approved' => (
-          const Color(0xFF14B8A6).withValues(alpha: 0.20),
-          const Color(0xFF99F6E4),
+          const Color(0xFF14B8A6).withValues(
+            alpha: palette.isDark ? 0.20 : 0.14,
+          ),
+          palette.isDark ? const Color(0xFF99F6E4) : const Color(0xFF0F766E),
         ),
       'live' => (
-          const Color(0xFF14B8A6).withValues(alpha: 0.20),
-          const Color(0xFF99F6E4),
+          const Color(0xFF14B8A6).withValues(
+            alpha: palette.isDark ? 0.20 : 0.14,
+          ),
+          palette.isDark ? const Color(0xFF99F6E4) : const Color(0xFF0F766E),
         ),
       'paused' => (
-          const Color(0xFFFFC107).withValues(alpha: 0.20),
-          const Color(0xFFFFE082),
+          const Color(0xFFFFC107).withValues(
+            alpha: palette.isDark ? 0.20 : 0.18,
+          ),
+          palette.isDark ? const Color(0xFFFFE082) : const Color(0xFF92400E),
         ),
       'sold' => (
-          const Color(0xFFF97316).withValues(alpha: 0.20),
-          const Color(0xFFFFD7B5),
+          const Color(0xFFF97316).withValues(
+            alpha: palette.isDark ? 0.20 : 0.16,
+          ),
+          palette.isDark ? const Color(0xFFFFD7B5) : const Color(0xFFC2410C),
         ),
       'ended' => (
-          const Color(0xFFEF4444).withValues(alpha: 0.20),
-          const Color(0xFFFFB4AB),
+          const Color(0xFFEF4444).withValues(
+            alpha: palette.isDark ? 0.20 : 0.14,
+          ),
+          palette.isDark ? const Color(0xFFFFB4AB) : const Color(0xFFB42318),
         ),
       'rejected' => (
-          const Color(0xFFEF4444).withValues(alpha: 0.20),
-          const Color(0xFFFFB4AB),
+          const Color(0xFFEF4444).withValues(
+            alpha: palette.isDark ? 0.20 : 0.14,
+          ),
+          palette.isDark ? const Color(0xFFFFB4AB) : const Color(0xFFB42318),
+        ),
+      'pending' => (
+          const Color(0xFFFFC107).withValues(
+            alpha: palette.isDark ? 0.20 : 0.18,
+          ),
+          palette.isDark ? const Color(0xFFFFE082) : const Color(0xFF92400E),
         ),
       _ => (
-          const Color(0xFFFFC107).withValues(alpha: 0.20),
-          const Color(0xFFFFE082),
+          const Color(0xFFFFC107).withValues(
+            alpha: palette.isDark ? 0.20 : 0.18,
+          ),
+          palette.isDark ? const Color(0xFFFFE082) : const Color(0xFF92400E),
         ),
     };
 
@@ -642,21 +676,31 @@ class AdminInfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: palette.tileBackground,
         borderRadius: BorderRadius.circular(16),
+        border: palette.isDark
+            ? null
+            : Border.all(color: palette.panelBorder.withValues(alpha: 0.72)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: const Color(0xFFFFD54F)),
+          Icon(
+            icon,
+            size: 16,
+            color: palette.isDark
+                ? const Color(0xFFFFD54F)
+                : const Color(0xFFD97706),
+          ),
           const SizedBox(width: 8),
           Text(
             label,
             style: GoogleFonts.manrope(
-              color: Colors.white,
+              color: palette.primaryText,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -683,15 +727,16 @@ class _DialogField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     return TextFormField(
       controller: controller,
       validator: validator,
       keyboardType: keyboardType,
       maxLines: maxLines,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: palette.primaryText),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.white70),
+        labelStyle: TextStyle(color: palette.secondaryText),
       ),
     );
   }
@@ -709,6 +754,7 @@ class AdminStateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -722,7 +768,7 @@ class AdminStateCard extends StatelessWidget {
                 message,
                 textAlign: TextAlign.center,
                 style: GoogleFonts.manrope(
-                  color: Colors.white,
+                  color: palette.primaryText,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -732,4 +778,45 @@ class AdminStateCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class AdminUiPalette {
+  AdminUiPalette._(BuildContext context)
+      : theme = Theme.of(context),
+        colorScheme = Theme.of(context).colorScheme,
+        isDark = Theme.of(context).brightness == Brightness.dark;
+
+  factory AdminUiPalette.of(BuildContext context) => AdminUiPalette._(context);
+
+  final ThemeData theme;
+  final ColorScheme colorScheme;
+  final bool isDark;
+
+  Color get panelBackground => isDark
+      ? Colors.white.withValues(alpha: 0.10)
+      : Colors.white.withValues(alpha: 0.88);
+
+  Color get panelBorder => isDark
+      ? Colors.white.withValues(alpha: 0.14)
+      : const Color(0xFFD3E3DF);
+
+  Color get tileBackground => isDark
+      ? Colors.white.withValues(alpha: 0.06)
+      : const Color(0xFFF2F7FA);
+
+  Color get dialogBackground => isDark ? const Color(0xFF0E213E) : Colors.white;
+
+  Color get sheetBackground => isDark
+      ? const Color(0xFF0E213E).withValues(alpha: 0.94)
+      : Colors.white.withValues(alpha: 0.97);
+
+  Color get primaryText => isDark ? Colors.white : const Color(0xFF10213A);
+
+  Color get secondaryText => isDark
+      ? Colors.white.withValues(alpha: 0.72)
+      : const Color(0xFF486072);
+
+  Color get tertiaryText => isDark
+      ? Colors.white.withValues(alpha: 0.56)
+      : const Color(0xFF6A8091);
 }

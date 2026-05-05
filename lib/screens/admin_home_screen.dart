@@ -32,14 +32,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     'Admin Dashboard',
   ];
 
-  final _pages = [
-    const ManageAuctionsScreen(),
-    const AuctionRequestsScreen(),
-    AdminComplaintsScreen(),
-    AdminUsersScreen(),
-    const AdminDashboard(),
-  ];
-
   void _changeTab(int index) {
     if (_selectedIndex == index) {
       return;
@@ -111,7 +103,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                       },
                       child: KeyedSubtree(
                         key: ValueKey(_selectedIndex),
-                        child: _pages[_selectedIndex],
+                        child: _buildPage(_selectedIndex),
                       ),
                     ),
                   ),
@@ -129,6 +121,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildPage(int index) {
+    switch (index) {
+      case 0:
+        return const ManageAuctionsScreen();
+      case 1:
+        return const AuctionRequestsScreen();
+      case 2:
+        return AdminComplaintsScreen();
+      case 3:
+        return AdminUsersScreen();
+      case 4:
+        return const AdminDashboard();
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }
 
@@ -296,6 +305,7 @@ class _AdminBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AdminUiPalette.of(context);
     const items = [
       (Icons.gavel_rounded, 'Auctions'),
       (Icons.pending_actions_rounded, 'Requests'),
@@ -311,9 +321,9 @@ class _AdminBottomBar extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.10),
+            color: palette.panelBackground,
             borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            border: Border.all(color: palette.panelBorder),
           ),
           child: Row(
             children: List.generate(items.length, (index) {
@@ -348,7 +358,9 @@ class _AdminBottomBar extends StatelessWidget {
                           items[index].$1,
                           color: isActive
                               ? const Color(0xFF10213A)
-                              : Colors.white.withValues(alpha: 0.78),
+                              : palette.isDark
+                                  ? Colors.white.withValues(alpha: 0.78)
+                                  : palette.primaryText,
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -356,7 +368,9 @@ class _AdminBottomBar extends StatelessWidget {
                           style: GoogleFonts.manrope(
                             color: isActive
                                 ? const Color(0xFF10213A)
-                                : Colors.white.withValues(alpha: 0.78),
+                                : palette.isDark
+                                    ? Colors.white.withValues(alpha: 0.78)
+                                    : palette.primaryText,
                             fontWeight: FontWeight.w800,
                             fontSize: 12,
                           ),

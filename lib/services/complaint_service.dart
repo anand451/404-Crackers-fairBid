@@ -19,17 +19,23 @@ class ComplaintService {
     return _firestore
         .collection('complaints')
         .where('userId', isEqualTo: userId)
-        .orderBy('timestamp', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map(Complaint.fromDoc).toList());
+        .map((snapshot) {
+          final complaints = snapshot.docs.map(Complaint.fromDoc).toList();
+          complaints.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          return complaints;
+        });
   }
 
   Stream<List<Complaint>> streamAllComplaints() {
     return _firestore
         .collection('complaints')
-        .orderBy('timestamp', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map(Complaint.fromDoc).toList());
+        .map((snapshot) {
+          final complaints = snapshot.docs.map(Complaint.fromDoc).toList()
+            ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          return complaints;
+        });
   }
 
   Future<void> submitComplaint({
@@ -69,7 +75,9 @@ class ComplaintService {
         'type': 'complaint',
         'complaintId': complaint.id,
         'timestamp': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
         'readStatus': false,
+        'isRead': false,
       });
       await batch.commit();
       _log('Complaint ${complaint.id} saved for ${user.uid}');
@@ -108,7 +116,9 @@ class ComplaintService {
         'type': 'complaint',
         'complaintId': complaint.id,
         'timestamp': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
         'readStatus': false,
+        'isRead': false,
       });
       await batch.commit();
       _log('Complaint ${complaint.id} resolved by $adminId');
