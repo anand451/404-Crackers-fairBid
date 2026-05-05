@@ -1,0 +1,21 @@
+rules_version='2'
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.fullName is string
+        && request.resource.data.phone is string
+        && request.resource.data.aadhaar is string
+        && request.resource.data.pan is string;
+
+      allow read, update: if request.auth != null
+        && request.auth.uid == userId;
+
+      allow delete: if false;
+    }
+  }
+}
